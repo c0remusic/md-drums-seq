@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v1, familles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="v1-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq v1 : quelle famille visuelle ?</h1>
+	<p class="note">Même géométrie, même Pattern d'exemple, seule la peau change. A : look natif Live (objets live.*,
+		thème de Live). B : famille de l'éditeur v22 de MD Drums (Inter, encre et accent turquoise). C : bande native,
+		fenêtre en v22. Densité de la grille :
+		<button onclick="draw(64)">64 pas</button> <button onclick="draw(32)">32 pas, badges</button></p>
+	<div id="all"></div>
+</div>
+<script src="v1-ui.js"></script>
+<script>
+	const OPTIONS = [
+		["A : natif Live", "live", "live"],
+		["B : famille v22 de MD Drums", "v22", "v22"],
+		["C : bande native, fenêtre v22", "live", "v22"],
+	];
+	function draw(density) {
+		const all = document.getElementById("all");
+		all.innerHTML = "";
+		OPTIONS.forEach(([title, stripFamily, windowFamily], i) => {
+			const prefix = "abc"[i] + "-";
+			const h = document.createElement("h2");
+			h.textContent = title;
+			const s = document.createElement("div");
+			s.className = "fam-" + stripFamily;
+			const w = document.createElement("div");
+			w.className = "fam-" + windowFamily;
+			w.style.marginTop = "12px";
+			all.append(h, s, w);
+			mdSeqMock.strip(s, {family: stripFamily, prefix});
+			mdSeqMock.editWindow(w, {family: windowFamily, prefix, density});
+		});
+	}
+	draw(64);
+</script>
+</body>
+</html>

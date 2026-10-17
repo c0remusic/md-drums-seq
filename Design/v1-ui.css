@@ -1,0 +1,117 @@
+/* md-drums-seq mockup v1: one geometry, two skins (.fam-live, .fam-v22) */
+
+.fam-live {
+	--chrome: #2b2b2b;       /* around the device */
+	--bg: #383838;           /* device face */
+	--panel: #1e1e1e;        /* control wells, cells */
+	--panel-beat: #262626;   /* every fourth step's cell */
+	--line: #4a4a4a;
+	--border: #5e5e5e;
+	--text: #dadada;
+	--text-dim: #a2a2a2;
+	--text-faint: #767676;
+	--hit: #ffa52e;          /* a Hit: Live's orange "on" */
+	--on: #ffa52e;           /* a chosen option */
+	--on-text: #1e1e1e;
+	--accent: #7cc6ff;       /* selection, playhead, Locks */
+	--active: #f2d33a;       /* a Track that plays: Live's activator yellow */
+	--muted: #4a4a4a;
+	--cond: #c9a0ff;
+	--font: "Ableton Sans", Arial, Helvetica, sans-serif;
+	--fs-s: 10px; --fs-m: 11px; --fs-l: 13px; --fs-xl: 16px;
+	--radius: 2px;
+}
+
+.fam-v22 {
+	--chrome: #151618;
+	--bg: #1b1c1e;
+	--panel: #26272a;
+	--panel-beat: #2e2f33;
+	--line: #3a3c40;
+	--border: #6e7177;
+	--text: #f2f2f2;
+	--text-dim: #a7aaaf;
+	--text-faint: #8e9197;
+	--hit: #f2f2f2;          /* content is ink */
+	--on: #f2f2f2;
+	--on-text: #1b1c1e;
+	--accent: #6fd1c4;       /* what is live: shown Track, playhead, Locks */
+	--active: transparent;
+	--muted: #ff7a5c;
+	--cond: #6fd1c4;
+	--font: Inter, Arial, Helvetica, sans-serif;
+	--fs-s: 12px; --fs-m: 12px; --fs-l: 14px; --fs-xl: 22px;
+	--radius: 0px;
+}
+
+body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 Arial, sans-serif; }
+.page { padding: 24px; }
+.page h1 { font-size: 20px; margin: 0 0 4px; }
+.page h2 { font-size: 16px; margin: 32px 0 8px; }
+.page p.note { color: #9a9a9a; max-width: 1000px; margin: 4px 0 12px; }
+
+.host { background: var(--chrome); padding: 12px; display: inline-block; font-family: var(--font); }
+.device { position: relative; background: var(--bg); color: var(--text); }
+.device .titlebar { height: 18px; background: var(--panel); color: var(--text-dim); font-size: var(--fs-s);
+	line-height: 18px; padding-left: 8px; border-bottom: 1px solid var(--line); }
+.area { position: relative; }
+.abs { position: absolute; box-sizing: border-box; }
+
+.label { color: var(--text-dim); font-size: var(--fs-s); line-height: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+.fam-v22 .label { text-transform: none; font-weight: 600; letter-spacing: 1px; }
+.hint { color: var(--text-faint); font-size: var(--fs-s); }
+
+.btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text);
+	font-size: var(--fs-m); display: flex; align-items: center; justify-content: center; cursor: default;
+	user-select: none; }
+.fam-live .btn { border-color: #121212; }
+.btn.on { background: var(--on); color: var(--on-text); border-color: var(--on); }
+.btn.queued { box-shadow: inset 0 0 0 2px var(--accent); animation: queued 0.6s steps(2) infinite; }
+@keyframes queued { 50% { box-shadow: inset 0 0 0 2px transparent; } }
+.btn.empty { color: var(--text-faint); }
+.btn.big { font-size: var(--fs-l); font-weight: 600; }
+
+.track { flex-direction: column; align-items: flex-start; justify-content: center; padding-left: 4px; line-height: 1.1; }
+.track .num { font-size: var(--fs-s); color: var(--text-faint); }
+.track .name { font-size: var(--fs-m); }
+.track.on .num, .track.on .name { color: var(--on-text); }
+.fam-v22 .track.on { background: var(--panel); color: var(--text); border-color: var(--accent);
+	box-shadow: inset 0 -2px 0 var(--accent); }
+.fam-v22 .track.on .num { color: var(--text-dim); } .fam-v22 .track.on .name { color: var(--text); }
+
+.mute { font-size: var(--fs-s); }
+.fam-live .mute { background: var(--active); color: #1e1e1e; border-color: #121212; }
+.fam-live .mute.muted { background: var(--muted); color: var(--text-faint); }
+.fam-v22 .mute.muted { background: var(--muted); color: #1b1c1e; border-color: var(--muted); }
+
+.step { background: var(--panel); border: 1px solid transparent; border-radius: var(--radius); }
+.step.beat { background: var(--panel-beat); }
+.step .hitbox { position: absolute; left: 3px; right: 3px; top: 3px; bottom: 3px; background: var(--hit);
+	border-radius: var(--radius); }
+.step .tick { position: absolute; top: 3px; bottom: 3px; width: 1px; background: var(--panel); }
+.step .lockdot { position: absolute; right: 2px; top: 2px; width: 5px; height: 5px; background: var(--accent);
+	border-radius: 50%; box-shadow: 0 0 0 1px var(--panel); }
+.fam-v22 .step .lockdot { border-radius: 0; }
+.step .cond { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font-size: var(--fs-s);
+	color: var(--on-text); font-weight: 600; line-height: 1; }
+.step .condbar { position: absolute; left: 3px; right: 3px; bottom: 0; height: 2px; background: var(--cond); }
+.step.play { border-color: var(--accent); }
+.step.sel { box-shadow: 0 0 0 2px var(--accent); z-index: 2; }
+.col-play { background: var(--accent); opacity: 0.12; pointer-events: none; }
+
+.rule { background: var(--line); }
+.menu { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-m);
+	color: var(--text); padding: 0 6px; display: flex; align-items: center; justify-content: space-between; }
+.fam-live .menu { border-color: #121212; }
+.menu::after { content: "▾"; color: var(--text-faint); font-size: var(--fs-s); }
+.slider { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.fam-live .slider { border-color: #121212; }
+.slider .centre { position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1px; background: var(--line); }
+.slider .val { position: absolute; top: 4px; bottom: 4px; background: var(--accent); }
+
+.dialname { font-size: var(--fs-s); color: var(--text-dim); letter-spacing: 0.5px; }
+.dialval { font-size: var(--fs-m); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.dialval.locked { color: var(--accent); font-weight: 600; }
+.dialname.locked { color: var(--text); }
+.title-l { font-size: var(--fs-xl); color: var(--text); }
+.fam-v22 .title-l { font-weight: 600; letter-spacing: 1px; }

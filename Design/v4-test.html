@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v4</title>
+<link rel="stylesheet" href="v4-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq v4 : look natif Live, sans JS</h1>
+	<p class="note">v3, avec le Hit toujours centré dans sa case : le micro-timing devient une flèche de la couleur du Hit
+		qui sort de son bord, à gauche en avance, à droite en retard ; sa valeur se lit dans le panneau du pas. Ratchets en
+		crans sur le bord haut du Hit, Condition en bande violette sous la case avec son texte. Pattern d'exemple :
+		step 41 en lecture, step 47 de la Track 01 sélectionné (1:2, micro +6, 3 ratchets en décroissance, 3 Locks), Track
+		14 muette, Pattern 02 en file.</p>
+	<div class="fam-live" id="legend"></div>
+	<h2>Bande</h2>
+	<div class="fam-live" id="strip"></div>
+	<h2>Fenêtre d'édition</h2>
+	<div class="fam-live" id="window"></div>
+	<p class="note-lcd">lcd : la vélocité devient une teinte (orange mélangé au fond de la case), un Lock un point bleu
+		cerclé, une Condition une bande violette et son texte, le micro-timing une flèche (paintpoly), un ratchet un cran. Ses
+		couleurs ne suivent pas le thème de Live d'elles-mêmes : le patch les fixe (ici, le thème Dark approché).</p>
+</div>
+<script src="v4-ui.js"></script>
+<script>
+	mdSeqMock4.legend(document.getElementById("legend"));
+	mdSeqMock4.strip(document.getElementById("strip"));
+	mdSeqMock4.editWindow(document.getElementById("window"));
+</script>
+</body>
+</html>

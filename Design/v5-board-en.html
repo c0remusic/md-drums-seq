@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v5</title>
+<link rel="stylesheet" href="v5-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq, a Max for Live step sequencer for MD Drums</h1>
+	<div class="fam-live" id="legend"></div>
+	<h2>In the device chain</h2>
+	<div class="fam-live" id="strip"></div>
+	<h2>Edit window</h2>
+	<div class="fam-live" id="window"></div>
+</div>
+<script src="v5-ui.js"></script>
+<script>
+	mdSeqMock5.legend(document.getElementById("legend"), "en");
+	mdSeqMock5.strip(document.getElementById("strip"));
+	mdSeqMock5.editWindow(document.getElementById("window"));
+</script>
+</body>
+</html>

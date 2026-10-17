@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v1</title>
+<link rel="stylesheet" href="v1-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq v1 : look natif Live</h1>
+	<p class="note">Bande dans la chaîne de devices (169 px sous la barre de titre), pour jouer ; fenêtre d'édition ouverte
+		par « Edit », pour éditer. Couleurs du thème Dark de Live 12 approchées : dans Max, les objets live.* prendront
+		le vrai thème. Pattern d'exemple : step 41 en lecture, step 47 de la Track 01 sélectionné, Track 14 muette,
+		Pattern 02 en file.</p>
+	<div class="fam-live" id="strip"></div>
+	<h2>Fenêtre d'édition
+		<button onclick="show(64)">64 pas visibles</button>
+		<button onclick="show(32)">32 pas visibles, avec badges</button>
+	</h2>
+	<div class="fam-live" id="window"></div>
+</div>
+<script src="v1-ui.js"></script>
+<script>
+	mdSeqMock.strip(document.getElementById("strip"), {family: "live"});
+	function show(density) {
+		const w = document.getElementById("window");
+		w.innerHTML = "";
+		mdSeqMock.editWindow(w, {family: "live", density});
+	}
+	show(64);
+</script>
+</body>
+</html>

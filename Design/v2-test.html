@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v2</title>
+<link rel="stylesheet" href="v2-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq v2 : look natif Live, sans JS</h1>
+	<p class="note">Famille A (v1), 32 pas visibles. Les pas de la bande et la grille de la fenêtre sont dessinés comme les
+		dessinerait l'objet lcd de Max : couleurs opaques mélangées d'avance, rectangles, ronds, traits, texte ; tout le
+		reste représente des objets live.*. Pattern d'exemple : step 41 en lecture, step 47 de la Track 01 sélectionné
+		(1:2, micro +6, 3 ratchets en décroissance, 3 Locks), Track 14 muette, Pattern 02 en file.</p>
+	<div class="fam-live" id="strip"></div>
+	<h2>Fenêtre d'édition</h2>
+	<div class="fam-live" id="window"></div>
+	<p class="note-lcd">lcd : la vélocité devient une teinte (orange mélangé au fond de la case), un Lock un point bleu
+		cerclé, une Condition un texte, le micro-timing un décalage du bloc, un ratchet un trait. Ses couleurs ne suivent
+		pas le thème de Live d'elles-mêmes : le patch les fixe (ici, le thème Dark approché).</p>
+</div>
+<script src="v2-ui.js"></script>
+<script>
+	mdSeqMock2.strip(document.getElementById("strip"));
+	mdSeqMock2.editWindow(document.getElementById("window"));
+</script>
+</body>
+</html>
