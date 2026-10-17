@@ -27,7 +27,7 @@
 //
 // Every half second a clock and a qelem read, on the main thread, the file MD Drums writes for the device's id
 // (mdseq::KitLink, ADR 0003), whose Kit names the Tracks; the hello that gives MD Drums the id goes out of the MIDI
-// outlet from the scheduler thread, through schedule_delay(), between two wakes.
+// outlet from that clock, on the scheduler thread between two wakes, at its own pace (mdseq::HelloPace).
 //
 // A development build (MDSEQ_DEV) also logs to %TEMP%\mdseq-log.txt, starts with a demonstration Pattern at the first
 // redraw and sends the lines of %TEMP%\mdseq-lomprobe.txt to the LOM (see loadDemo and lomProbe).
@@ -114,7 +114,9 @@ namespace
 		t_qelem* printQelem;			// and runs it on the main thread
 		mdseq::KitLink* kitLink;		// main thread: the hello's id, and the Kit MD Drums tells (ADR 0003)
 		uint32_t helloId;				// its id, which the scheduler thread's hello reads; constant once created
-		t_clock* kitClock;				// every KitLink::PollMs, on the scheduler thread
+		t_clock* kitClock;				// every KitLink::PollMs, on the scheduler thread: the hello, when due
+		mdseq::HelloPace* helloPace;	// scheduler thread
+		std::atomic<int> kitFile;		// the last poll's mdseq::KitFile::State, which the hello's pace reads
 		t_qelem* kitQelem;				// and the file read on the main thread
 		std::shared_ptr<UpdateLine>* update;	// main thread; shared with the thread that looks for a release
 		bool updatesEnabled;			// main thread: the settings' "updates on|off" as the window's switch shows it
@@ -125,6 +127,9 @@ namespace
 		long eventsSent;
 		long editsApplied;
 		bool lastLoggedPlaying;
+		long kitTicks;					// the Kit clock's ticks
+		double lastKitPollMs;			// main thread: the Kit poll's last run, and the ticks then
+		long lastKitTicks;
 		bool demoLoaded;				// development builds: the demonstration Pattern was applied
 		// The LOM's answers to the message being sent ("lomid ..." and "lomreply ..."), main thread only.
 		std::vector<std::vector<t_atom>>* lomInbox;
@@ -324,16 +329,19 @@ namespace
 	}
 
 	// The hello's eight messages out of the MIDI outlet, between two wakes of the Sequencer: the device's id for MD
-	// Drums, which writes its Kit into the file of that name.
-	void sendHello(MdSeq* _x, t_symbol*, short, t_atom*)
-	{
-		for(const mdseq::MidiBytes& message : mdseq::hello(_x->helloId))
-			for(const uint8_t byte : message)
-				outlet_int(_x->midiOutlet, byte);
-	}
-
+	// Drums, which writes its Kit into the file of that name. The main thread's poll reads that file; the hello does
+	// not wait for it, which stops for seconds at a time in Live.
 	void kitSoon(MdSeq* _x)
 	{
+		if constexpr(Dev)
+			++_x->kitTicks;
+		const auto file = static_cast<mdseq::KitFile::State>(_x->kitFile.load(std::memory_order_relaxed));
+		if(_x->helloPace->tick(file))
+		{
+			for(const mdseq::MidiBytes& message : mdseq::hello(_x->helloId))
+				for(const uint8_t byte : message)
+					outlet_int(_x->midiOutlet, byte);
+		}
 		qelem_set(_x->kitQelem);
 		clock_fdelay(_x->kitClock, mdseq::KitLink::PollMs);
 	}
@@ -917,30 +925,43 @@ namespace
 		return error ? std::filesystem::path() : temp / "md-drums-seq";
 	}
 
-	// The file MD Drums writes for the device's id, or none. Read whole and closed at once: MD Drums renames its new
-	// file over this one, which Windows refuses while it is open. A path, not a narrow string, for a profile whose
-	// name is not ASCII.
-	std::optional<std::string> readKitFile(const std::string& _name)
+	// The file MD Drums writes for the device's id. Read whole and closed at once: MD Drums renames its new file over
+	// this one, which Windows refuses while it is open, and refuses to open it while the rename replaces it: a file
+	// that does not open but is not gone is busy. A path, not a narrow string, for a profile whose name is not ASCII.
+	mdseq::KitFile readKitFile(const std::string& _name)
 	{
 		const std::filesystem::path folder = kitFolder();
 		if(folder.empty())
-			return std::nullopt;
-		std::ifstream file(folder / _name, std::ios::binary);
-		if(!file)
-			return std::nullopt;
-		return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+			return mdseq::KitFile::none();
+		const std::filesystem::path path = folder / _name;
+		std::ifstream file(path, std::ios::binary);
+		if(file)
+			return mdseq::KitFile::read(std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()));
+		std::error_code error;
+		const bool gone = std::filesystem::status(path, error).type() == std::filesystem::file_type::not_found;
+		return gone ? mdseq::KitFile::none() : mdseq::KitFile::busy();
 	}
 
 	void kitOnMain(MdSeq* _x)
 	{
-		const mdseq::KitLink::Poll poll = _x->kitLink->poll(readKitFile(_x->kitLink->fileName()));
-		if(poll.hello)
-			schedule_delay(_x, reinterpret_cast<method>(sendHello), 0, nullptr, 0, nullptr);
+		if constexpr(Dev)
+		{
+			double now = 0;
+			clock_getftime(&now);
+			if(_x->lastKitPollMs > 0 && now - _x->lastKitPollMs > 1000)
+				logLine(_x, "kit poll late: %.0f ms since the last, %ld clock ticks", now - _x->lastKitPollMs,
+					_x->kitTicks - _x->lastKitTicks);
+			_x->lastKitPollMs = now;
+			_x->lastKitTicks = _x->kitTicks;
+		}
+		const mdseq::KitFile file = readKitFile(_x->kitLink->fileName());
+		_x->kitFile.store(static_cast<int>(file.state), std::memory_order_relaxed);
+		const bool kitChanged = _x->kitLink->poll(file);
 		// The Lock dials given back to the Kit since the last poll, now on the Kit's value; the queued Pattern's button
 		// blinks.
 		emit(_x, _x->editor->settle());
 		emit(_x, _x->editor->blink());
-		if(!poll.kitChanged)
+		if(!kitChanged)
 			return;
 		const std::optional<mdseq::Kit>& kit = _x->kitLink->kit();
 		logLine(_x, "kit %s: %s", _x->kitLink->fileName().c_str(), kit ? kit->name.c_str() : "none");
@@ -1309,6 +1330,8 @@ namespace
 		x->store = new mdseq::PatternStore();
 		x->kitLink = new mdseq::KitLink(randomSeed());
 		x->helloId = x->kitLink->id();
+		x->helloPace = new mdseq::HelloPace();
+		new(&x->kitFile) std::atomic<int>(static_cast<int>(mdseq::KitFile::State::Absent));
 		x->kitClock = static_cast<t_clock*>(clock_new(x, reinterpret_cast<method>(kitSoon)));
 		x->kitQelem = static_cast<t_qelem*>(qelem_new(x, reinterpret_cast<method>(kitOnMain)));
 		clock_fdelay(x->kitClock, mdseq::KitLink::PollMs);
@@ -1355,6 +1378,7 @@ namespace
 		qelem_free((*_x->update)->qelem);
 		delete _x->update;
 		delete _x->kitLink;
+		delete _x->helloPace;
 		delete _x->printer;
 		delete _x->lomSet;
 		itm_dereference(_x->itm);

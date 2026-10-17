@@ -82,6 +82,14 @@ tag.
   retrouvées par leur routage, créées si elles manquent ; N Passes du Pattern affiché depuis la graine du dernier
   départ ; scène sélectionnée ou neuve, rien n'est écrasé ; la règle du canal 1 de MD Drums à restreindre au Hit de ce
   canal. Construction au ticket 22 ; capture et Arrangement au ticket 23, après Live 12.4.
+- [Routage External Instrument](issues/05-routage-external-instrument.md) et
+  [Jeu en direct par midiout](issues/06-jeu-en-direct.md) : fermés le 2026-10-17, dépassés par la construction ; le
+  device joue devant MD Drums sur sa piste, les clips imprimés vont droit à MD Drums, les deux jouent ensemble.
+- [Charge MIDI que Max for Live supporte](issues/24-charge-midi-de-max-for-live.md) : Live garde les notes tenues
+  par un device Max dans un ensemble de 128 et quitte quand il déborde (lu dans le dump du plantage du 2026-10-13 :
+  `boost::container::bad_alloc` lancée par Live). Joué en direct, un Lock finit aussitôt : 17 notes tenues au plus
+  au lieu de 399, Locks toujours reçus par MD Drums (mesuré). Scénario rejoué le 2026-10-17 : deux instances denses,
+  le build corrigé tient 20 s, celui d'avant plante en 2 s au même endroit. Livré en 0.1.1.
 
 ## Not yet specified
 
@@ -90,22 +98,27 @@ tag.
 - Accent, Swing et Slide façon MD (ticket 26) : Swing construit le 2026-10-15 ; Accent et Slide attendent une entrée dans
   MD Drums (un accent au-delà de la vélocité 127, des Locks sans Hit ou un glissement).
 - Push 2 : grille de pas, Track choisie, encodeurs pour les Locks pendant qu'un pas est tenu, et la bascule avec le mode
-  contrôleur de MD Drums (sa carte éditeur le prévoit). Les banques de paramètres de MD Drums : ticket 25.
+  contrôleur de MD Drums (sa carte éditeur le prévoit). Les banques de paramètres de MD Drums : ticket 25. Mode
+  « à la Tuple » par `grab_control` : [ticket 33](issues/33-mode-push.md), recherche faite le 2026-10-17, six
+  questions pour la séance.
 - Enregistrement live : Hits joués en temps réel, quantisés, Locks pris des mouvements d'encodeurs.
 - Format de stockage des Patterns dans le set (taille, versions du format).
-- Mise en place dans Live : LOM crée les 16 pistes et route leur sortie vers MD Drums sur le canal N, mais ne règle pas
-  un External Instrument ; set modèle à fournir, ou réglage à la main une fois ? (Les Machines de MD Drums ne se
-  configurent plus dans Live : MD Drums les écrit dans un fichier que le device nomme, ADR 0003, ticket 27.)
+- ~~Mise en place dans Live : set modèle ou réglage à la main des External Instruments~~ : plus de question depuis
+  l'impression (ticket 22), qui crée elle-même les pistes et les route droit à MD Drums ; les Machines viennent du
+  fichier de MD Drums (ticket 27).
 - [Noms des Tracks par MD Drums](issues/27-noms-des-tracks.md) : construit et vérifié dans Live le 2026-10-16 avec
   MD Drums 035a88e5 (hello, fichier, onglets, rangées, titre et SYN1-8 nommés) ; le changement de Machine dans MD
-  Drums vérifié par l'utilisateur le 2026-10-17. Les valeurs du Kit sur les boutons de Lock : ticket 28.
+  Drums vérifié par l'utilisateur le 2026-10-17. Les valeurs du Kit sur les boutons de Lock : ticket 28. Les noms qui
+  revenaient aux numéros (fichier occupé pendant que MD Drums le remplace, hellos retardés par le fil principal de
+  Max) : [ticket 32](issues/32-noms-qui-clignotent.md), corrigé le 2026-10-17.
 - [Copier un Pattern, doubler sa longueur](issues/29-copie-et-double.md) : menu « Copy to », bouton « ×2 »,
   puis Clear (2026-10-17) ; vérifiés dans Live par l'utilisateur.
 - [Mode Fill et états des Patterns](issues/30-mode-fill-et-etats.md) : construits et vérifiés dans Live le
   2026-10-17.
 - [Chaînes de Patterns](issues/31-chaines.md) : construites le 2026-10-17 (mode Chain, une Pass par Pattern,
   menées par l'Editor), vérifiées dans Live ; gardées dans le set par un Blob.
-- Charge LOM avec 16 pistes réécrites en continu.
+- ~~Charge LOM avec 16 pistes réécrites en continu~~ : sans objet depuis le 2026-10-09, la LOM n'écrit que pour
+  imprimer.
 - Mesure de bout en bout : faite le 2026-10-17 ([ticket 04](issues/04-timing-midiout.md)) : en direct, depuis
   un clip imprimé et depuis un clip fait à la main, MD Drums sonne 2 échantillons après la grille, décalage 0 entre
   les trois, sans gigue mesurable.
@@ -113,7 +126,8 @@ tag.
 ## Out of scope
 
 - Polymétrie (longueur par Track ou par rangée) : écartée au cadrage.
-- Scènes et chaînes de Patterns : écartées au cadrage.
+- Scènes de Patterns : écartées au cadrage. Les chaînes, écartées aussi, ont été construites à la demande de
+  l'utilisateur (ticket 31).
 - Pas méta façon Cirklon (saut, sens de lecture) : écartés au cadrage.
 - Kit par Pattern : le séquenceur ne change jamais le Kit, et la SysEx ne traverse pas une piste Live.
 - Export et import de Patterns en fichiers.

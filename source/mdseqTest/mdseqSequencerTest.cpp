@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <map>
 #include <new>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -545,12 +546,14 @@ namespace
 		setHit(seq, 3, 1);
 		setLock(seq, 3, 1, Vol, 62);
 
-		// On the Track's channel, the Hit then its Locks, a step long; note-offs first at the same tick. Live brings a
-		// device's notes to channel 1, where MD Drums binds a Lock to the last Hit before it (ADR 0003 as amended).
+		// On the Track's channel, the Hit a step long then its Locks, each ended at once: MD Drums reads a Lock at its
+		// note-on, and Live holds at most 128 notes from a device (issue 24). Note-offs first at the same tick. Live
+		// brings a device's notes to channel 1, where MD Drums binds a Lock to the last Hit before it (ADR 0003 as
+		// amended).
 		CHECK_EVENTS(play(seq, 0.0, 300.0), (Events{
-			on(0, 3), lockOn(0, 3, Syn1, 100), lockOn(0, 3, Vol, 1),
-			lockOff(120, 3, Syn1), lockOff(120, 3, Vol), off(120, 3), on(120, 3), lockOn(120, 3, Vol, 63),
-			lockOff(240, 3, Vol), off(240, 3)}));
+			on(0, 3), lockOn(0, 3, Syn1, 100), lockOff(0, 3, Syn1), lockOn(0, 3, Vol, 1), lockOff(0, 3, Vol),
+			off(120, 3), on(120, 3), lockOn(120, 3, Vol, 63), lockOff(120, 3, Vol),
+			off(240, 3)}));
 
 		// Two Tracks at one tick: each Hit is followed by its own Locks, never by the other Track's.
 		Played two;
@@ -558,7 +561,8 @@ namespace
 		setLock(two, 5, 0, Vol, 30);
 		setHit(two, 2, 0);
 		setLock(two, 2, 0, Syn1, 90);
-		CHECK_EVENTS(play(two, 0.0, 60.0), (Events{on(0, 2), lockOn(0, 2, Syn1, 90), on(0, 5), lockOn(0, 5, Vol, 31)}));
+		CHECK_EVENTS(play(two, 0.0, 60.0), (Events{on(0, 2), lockOn(0, 2, Syn1, 90), lockOff(0, 2, Syn1), on(0, 5),
+			lockOn(0, 5, Vol, 31), lockOff(0, 5, Vol)}));
 
 		// Taking the Hit off takes its Locks off; giving it back plays it without them.
 		seq.input({Input::Kind::SetHit, 2, 1, 0});
@@ -575,14 +579,14 @@ namespace
 		muted.input({Input::Kind::SetMute, 0, 0, 1});
 		CHECK(play(muted, 0.0, 300.0).empty());
 
-		// Stopping ends the Locks sounding too.
+		// Stopping ends the Hit sounding; its Locks have ended already.
 		Played stopped;
 		setHit(stopped, 2, 0);
 		setLock(stopped, 2, 0, Vol, 90);
 		play(stopped, 0.0, 60.0);
 		Events events;
 		append(events, stopped.stopAt(60.0));
-		CHECK_EVENTS(events, (Events{lockOff(60, 2, Vol), off(60, 2)}));
+		CHECK_EVENTS(events, (Events{off(60, 2)}));
 	}
 
 	void setCondition(Sequencer& _seq, const int _track, const int _step, const char* _label, const int _pattern = 0)
@@ -780,13 +784,13 @@ namespace
 		CHECK_EVENTS(play(pair, 0.0, 100.0), (Events{on(0, 1), on(0, 2), on(0, 4), off(40, 2), on(40, 2),
 			off(60, 1), off(60, 4), on(60, 1), on(60, 4), off(80, 2), on(80, 2)}));
 
-		// Each ratchet is the Hit followed by its Locks, both a share of the step long.
+		// Each ratchet is the Hit, a share of the step long, followed by its Locks.
 		Played locked;
 		setHit(locked, 3, 0);
 		setLock(locked, 3, 0, Vol, 0);
 		setRatchets(locked, 3, 0, 2);
-		CHECK_EVENTS(play(locked, 0.0, 100.0), (Events{on(0, 3), lockOn(0, 3, Vol, 1),
-			lockOff(60, 3, Vol), off(60, 3), on(60, 3), lockOn(60, 3, Vol, 1)}));
+		CHECK_EVENTS(play(locked, 0.0, 100.0), (Events{on(0, 3), lockOn(0, 3, Vol, 1), lockOff(0, 3, Vol),
+			off(60, 3), on(60, 3), lockOn(60, 3, Vol, 1), lockOff(60, 3, Vol)}));
 
 		// One draw decides for the whole group: every step played sounds its 4 Hits.
 		Played chance(11);
@@ -1108,6 +1112,35 @@ namespace
 		CHECK(best.longest < 1.0);
 		CHECK(best.replan < 1.0);
 #endif
+	}
+
+	// Live keeps the notes a Max device holds in a set of 128 and quits when a note-on overflows it (issue 24: the
+	// crash dump of 2026-10-13 throws boost::container::bad_alloc from that set, reached from Live's MIDI handler under
+	// MaxPlug). Played live, the heaviest Pattern never holds more than a note per Track, its Hit, and the Lock between
+	// its note-on and its note-off, whatever its Locks, ratchets, micro-timing and swing (399 notes before).
+	void heldNotes()
+	{
+		Played seq;
+		heaviestPattern(seq);
+		seq.input({Input::Kind::SetSwing, 0, 0, MaxSwing});
+		std::set<std::pair<int, int>> held;
+		size_t most = 0;
+		size_t locks = 0;
+		for(const Event& e : play(seq, 0.0, 4 * 1920.0))
+		{
+			const std::pair<int, int> note{e.status & 0x0f, e.data1};
+			if((e.status & 0xf0) == 0x90)
+			{
+				held.insert(note);
+				locks += e.data1 >= FirstLockNote ? 1 : 0;
+			}
+			else
+				held.erase(note);
+			most = std::max(most, held.size());
+		}
+		std::printf("  heaviest Pattern played live: %zu Locks, at most %zu notes held\n", locks, most);
+		CHECK(locks > 10000);
+		CHECK(most <= static_cast<size_t>(TrackCount) + 1);
 	}
 
 	void scales()
@@ -1621,6 +1654,7 @@ int main()
 	playheads();
 	noAllocationWhilePlaying();
 	heaviestWakes();
+	heldNotes();
 
 	if(g_failures)
 	{

@@ -4,7 +4,7 @@ A step sequencer for MD Drums, as a Max for Live device. It plays MD Drums' 16 T
 the Machinedrum's ideas: Hits with velocity, parameter Locks on each step, trig Conditions, ratchets, micro-timing,
 swing, a Fill, 16 Patterns and chains. It can also print a Pattern into Live clips that play MD Drums without it.
 
-Version 0.1.0, a preview: Windows only.
+Version 0.1.1, a preview: Windows only.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ Version 0.1.0, a preview: Windows only.
 
 ## Install
 
-1. Unzip `md-drums-seq-0.1.0-win64.zip`.
+1. Unzip `md-drums-seq-0.1.1-win64.zip`.
 2. Put the `md-drums-seq` folder into Live's User Library, under `Presets/MIDI Effects/Max MIDI Effect/`. Keep its
    two files together: the device loads its engine, `mdseq.mxe64`, from its own folder.
 3. Start Live (or restart it: Max never loads a new version of an engine it has already loaded).
@@ -32,6 +32,8 @@ system's temporary folder: the device then names each Track after its Machine an
 
 The device has two surfaces.
 
+![The strip in Live's device chain, in front of MD Drums](docs/images/md-drums-seq-strip.png)
+
 **The strip**, in Live's device chain, plays:
 - the 16 Patterns (lit: playing; bright: holds Hits; faint: empty; blinking blue outline: queued for the end of the
   Pass). Choosing a Pattern while Live plays queues it;
@@ -41,6 +43,8 @@ The device has two surfaces.
 - Chain: on, the Pattern buttons clicked make a chain; off, it plays, each Pattern for one Pass, round and round. A
   Pattern chosen by hand ends it;
 - Edit, which opens the window.
+
+![The edit window: the grid of 16 Tracks, and the step panel with the Locks](docs/images/md-drums-seq-edit.png)
 
 **The edit window** edits:
 - the grid, 16 Tracks by 32 steps (two halves for 64): a click on an empty cell puts a Hit and selects the step; a

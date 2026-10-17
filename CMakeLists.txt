@@ -14,7 +14,7 @@ set(MDSEQ_CLASS "mdseq" CACHE STRING "The external's Max class and file name (a 
 FetchContent_MakeAvailable(max-sdk-base)
 
 # The version a release carries (tools/package.py names its zip after it), shown in the Max console as the device loads.
-project(md-drums-seq VERSION 0.1.0 LANGUAGES C CXX)
+project(md-drums-seq VERSION 0.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

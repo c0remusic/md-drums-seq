@@ -28,6 +28,9 @@ and writes no undo history: run them on a set the user has saved, and expect the
 | `live-kit-test.mjs setup <MD Drums path> <device path>`, then `drop`, `cleanup` | MD Drums and a development device on a temporary `MDSEQ KIT` track (`KIT_TRACK` names another), MD Drums deleted on `drop`: the Track names of issue 27, between captures |
 | `live-kit-readd.mjs <MD Drums path> <kit file>` | MD Drums loaded again on `MDSEQ KIT`, after the device, and the time its Kit file takes to come back |
 | `live-load-probe.mjs <browser path>`, then `cleanup` | Any probe device on a temporary `MDSEQ TABS` track, for a capture (`../tabs_probe.py`'s live.tab probes) |
+| `live-rename-device.mjs <track> <name> <new name>` | Renames a device whose name checks: a development build shown as "MD Drums Seq" for the release's screenshots (`docs/images`) |
+| `live-quiet-check.mjs <track name>` | Whether starting the transport sounds anything but that track: every other track's Arrangement clips and Session clips playing (read only) |
+| `live-track-volume.mjs <track name> [value]` | Reads or sets a track's fader: at 0 during `live-record-track.mjs`, which records Post FX, nothing reaches the speakers |
 
 Max ignores mouse messages posted to its windows (`PostMessage` of `WM_LBUTTONDOWN`/`UP` to the edit window: no Hit,
 nothing in the device's log): a click in the device needs the real pointer, which only the user moves.

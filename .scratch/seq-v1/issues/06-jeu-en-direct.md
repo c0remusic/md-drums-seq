@@ -1,7 +1,7 @@
 # Jeu en direct par midiout
 
 Type: grilling
-Status: open
+Status: resolved
 Assignee: —
 Blocked by: 04
 
@@ -22,3 +22,10 @@ temps sur les pistes Track : le device et eux peuvent-ils jouer ensemble, et qui
   (un pas), au Fill, aux Mutes et au transport (arrêt, sauts) ; la tranche verticale (ticket 13) pose le device en
   effet MIDI devant MD Drums. Restent : le placement définitif quand les Locks exigent les canaux (ticket 04), et le jeu
   du device en même temps que des clips imprimés.
+- 2026-10-17 : fermé, les deux restes tranchés par la construction.
+  - Placement : le device reste un effet MIDI devant MD Drums, sur la piste de MD Drums. Live ramène ses notes au
+    canal 1, et MD Drums lie un Lock du canal 1 au dernier Hit reçu juste avant lui au même échantillon (ADR 0003
+    amendée, ticket 16, mesuré : VOL à 0 → −inf dB). Depuis le ticket 24, un Lock joué en direct finit aussitôt.
+  - Device et clips imprimés : ils jouent ensemble, sans priorité ; les clips vont droit à MD Drums par leurs
+    pistes, le device par la sienne, et MD Drums entend les deux. Le README le dit : couper ou éteindre le device pour
+    n'entendre que les clips. Mesuré au ticket 04 : les deux tombent au même échantillon.

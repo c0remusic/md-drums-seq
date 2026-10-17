@@ -49,9 +49,27 @@ namespace mdseq
 	using MidiBytes = std::array<uint8_t, 3>;
 	std::array<MidiBytes, 2 * HelloNotes> hello(uint32_t _id);
 
-	// When to say hello and what MD Drums answered. The adapter reads the file every PollMs and hands its text over;
-	// the link says when a hello is due (at the first look, then every second while there is no file, every five seconds
-	// while there is one) and whether the Kit read differs from the last.
+	// MD Drums' file as the adapter found it at a poll: read, absent, or there but not opening for the moment. Windows
+	// refuses to open a file that a rename is replacing, as MD Drums does each time it writes one (measured: 923 opens
+	// refused in 10 s against a file replaced 567 times).
+	struct KitFile
+	{
+		enum class State
+		{
+			Absent,
+			Busy,
+			Read
+		};
+		State state = State::Absent;
+		std::string text;	// what was read
+
+		static KitFile none() { return {}; }
+		static KitFile busy() { return {State::Busy, {}}; }
+		static KitFile read(std::string _text) { return {State::Read, std::move(_text)}; }
+	};
+
+	// What MD Drums answered. The adapter reads the file every PollMs on the main thread and hands it over; the link
+	// says whether the Kit read differs from the last. A busy file keeps the Kit.
 	class KitLink
 	{
 	public:
@@ -64,20 +82,30 @@ namespace mdseq
 		// "<id>.kit", the id in six lowercase hexadecimal digits: the file's name in <temp>/md-drums-seq.
 		std::string fileName() const;
 
-		struct Poll
-		{
-			bool hello = false;			// send one now
-			bool kitChanged = false;	// kit() is not what the last poll gave
-		};
-		Poll poll(const std::optional<std::string>& _fileText);
+		// Whether kit() is not what the last poll gave.
+		bool poll(const KitFile& _file);
 
-		// The Kit of the last poll, none while MD Drums has written no file this build reads.
+		// The Kit of the last file read, none while MD Drums has written no file this build reads.
 		const std::optional<Kit>& kit() const { return m_kit; }
 
 	private:
 		uint32_t m_id;
-		int m_sinceHello = -1;	// polls since the last hello, -1 before the first
 		std::optional<std::string> m_text;
 		std::optional<Kit> m_kit;
+	};
+
+	// When to say hello: at the first tick, then every second (two ticks of KitLink::PollMs) while MD Drums' file is
+	// absent, every five seconds while it is there, read or busy. It ticks on Max's scheduler thread, apart from the
+	// file's reading on the main thread: in Live, Max's main thread stops for seconds at a time (measured on 2026-10-17:
+	// 3.7 s and 6.4 s, and 13 s between two hellos), and MD Drums forgets a device it has not heard for 15 s, deleting
+	// its file. Allocates nothing.
+	class HelloPace
+	{
+	public:
+		// _file: what the last poll found of MD Drums' file.
+		bool tick(KitFile::State _file);
+
+	private:
+		int m_sinceHello = -1;	// ticks since the last hello, -1 before the first
 	};
 }

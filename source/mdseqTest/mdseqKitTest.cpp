@@ -1,5 +1,5 @@
-// The Kit as MD Drums tells it (ADR 0003): the file read, its version and the lines skipped; the hello's bytes; when the
-// link says hello, and when the Kit read changes.
+// The Kit as MD Drums tells it (ADR 0003): the file read, its version and the lines skipped; the hello's bytes and its
+// pace; when the Kit read changes.
 
 #include "mdseqKit.h"
 #include "mdseqTestSupport.h"
@@ -86,17 +86,19 @@ namespace
 		CHECK(KitLink(0).id() <= 0xFFFFFF && KitLink(0x5000000).id() <= 0xFFFFFF);
 	}
 
-	// A hello at the first look, then every second (two polls) while there is no file, every five seconds (ten polls)
-	// while there is one, and every second again once it has gone.
+	// A hello at the first tick, then every second (two ticks) while there is no file, every five seconds (ten ticks)
+	// while there is one, busy or read, and every second again once it has gone.
 	void helloCadence()
 	{
-		KitLink link(1);
+		HelloPace pace;
 		std::vector<int> hellos;
-		for(int poll = 1; poll <= 30; ++poll)
+		for(int tick = 1; tick <= 30; ++tick)
 		{
-			const bool file = poll >= 4 && poll <= 23;
-			if(link.poll(file ? std::optional<std::string>(File) : std::nullopt).hello)
-				hellos.push_back(poll);
+			KitFile::State file = KitFile::State::Absent;
+			if(tick >= 4 && tick <= 23)
+				file = tick % 3 == 0 ? KitFile::State::Busy : KitFile::State::Read;
+			if(pace.tick(file))
+				hellos.push_back(tick);
 		}
 		CHECK((hellos == std::vector<int>{1, 3, 13, 23, 25, 27, 29}));
 	}
@@ -104,23 +106,44 @@ namespace
 	void kitChanges()
 	{
 		KitLink link(1);
-		CHECK(!link.poll(std::nullopt).kitChanged);
+		CHECK(!link.poll(KitFile::none()));
 		CHECK(!link.kit());
-		CHECK(link.poll(std::string(File)).kitChanged);
+		CHECK(link.poll(KitFile::read(File)));
 		CHECK(link.kit() && link.kit()->name == "TRX UW");
-		CHECK(!link.poll(std::string(File)).kitChanged);
+		CHECK(!link.poll(KitFile::read(File)));
 		// Another text that says the same: an unknown line more.
-		CHECK(!link.poll(std::string(File) + "links 1 2\n").kitChanged);
+		CHECK(!link.poll(KitFile::read(std::string(File) + "links 1 2\n")));
 		std::string other = File;
 		other.replace(other.find("TRX UW"), 6, "E12 UW");
-		CHECK(link.poll(other).kitChanged);
+		CHECK(link.poll(KitFile::read(other)));
 		CHECK(link.kit()->name == "E12 UW");
 		// A file this build cannot read is no Kit.
-		CHECK(link.poll(std::string("md-drums-kit 2\n")).kitChanged);
+		CHECK(link.poll(KitFile::read("md-drums-kit 2\n")));
 		CHECK(!link.kit());
-		CHECK(link.poll(std::string(File)).kitChanged);
-		CHECK(link.poll(std::nullopt).kitChanged);
+		CHECK(link.poll(KitFile::read(File)));
+		CHECK(link.poll(KitFile::none()));
 		CHECK(!link.kit());
+	}
+
+	// A file that MD Drums is replacing does not open for a moment (seen in Live on 2026-10-17: the Track names went
+	// back to numbers for half a second): the Kit stays until a poll reads the file again or finds it gone.
+	void busyFileKeepsTheKit()
+	{
+		KitLink link(1);
+		link.poll(KitFile::read(File));
+		for(int poll = 1; poll <= 12; ++poll)
+		{
+			CHECK(!link.poll(KitFile::busy()));
+			CHECK(link.kit() && link.kit()->name == "TRX UW");
+		}
+		CHECK(!link.poll(KitFile::read(File)));
+		CHECK(!link.poll(KitFile::busy()));
+		CHECK(link.poll(KitFile::none()));
+		CHECK(!link.kit());
+		// Busy before any file: still no Kit.
+		KitLink fresh(2);
+		CHECK(!fresh.poll(KitFile::busy()));
+		CHECK(!fresh.kit());
 	}
 }
 
@@ -133,5 +156,6 @@ int main()
 	ids();
 	helloCadence();
 	kitChanges();
+	busyFileKeepsTheKit();
 	return mdseqTest::finish("mdseqKitTest");
 }

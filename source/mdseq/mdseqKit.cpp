@@ -142,30 +142,32 @@ namespace mdseq
 		return name;
 	}
 
-	KitLink::Poll KitLink::poll(const std::optional<std::string>& _fileText)
+	bool KitLink::poll(const KitFile& _file)
 	{
-		Poll result;
+		if(_file.state == KitFile::State::Busy)
+			return false;
+		std::optional<std::string> text;
+		if(_file.state == KitFile::State::Read)
+			text = _file.text;
+		if(text == m_text)
+			return false;
+		m_text = std::move(text);
+		std::optional<Kit> kit = m_text ? parseKit(*m_text) : std::nullopt;
+		if(kit == m_kit)
+			return false;
+		m_kit = std::move(kit);
+		return true;
+	}
 
+	bool HelloPace::tick(const KitFile::State _file)
+	{
 		// MD Drums answers a hello within a second; then it only has to hear that the device is still there.
-		constexpr int PollsUnanswered = 2;	// a second
-		constexpr int PollsAnswered = 10;	// five seconds
-		const int due = _fileText ? PollsAnswered : PollsUnanswered;
-		if(m_sinceHello < 0 || ++m_sinceHello >= due)
-		{
-			result.hello = true;
-			m_sinceHello = 0;
-		}
-
-		if(_fileText != m_text)
-		{
-			m_text = _fileText;
-			std::optional<Kit> kit = m_text ? parseKit(*m_text) : std::nullopt;
-			if(kit != m_kit)
-			{
-				m_kit = std::move(kit);
-				result.kitChanged = true;
-			}
-		}
-		return result;
+		constexpr int TicksUnanswered = 2;	// a second
+		constexpr int TicksAnswered = 10;	// five seconds
+		const int due = _file == KitFile::State::Absent ? TicksUnanswered : TicksAnswered;
+		if(m_sinceHello >= 0 && ++m_sinceHello < due)
+			return false;
+		m_sinceHello = 0;
+		return true;
 	}
 }

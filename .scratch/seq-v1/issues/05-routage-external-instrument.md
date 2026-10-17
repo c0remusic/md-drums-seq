@@ -1,7 +1,7 @@
 # Routage External Instrument vers MD Drums
 
 Type: task
-Status: open
+Status: resolved
 Assignee: —
 Blocked by: 03
 
@@ -22,3 +22,9 @@ piste ? Noter tout réglage nécessaire (Out de chaque Track activé, MPE désac
     Le paramètre Out de chaque Track choisit Main (0) ou Out 01-15, et un Out ne porte que les Tracks qui y sont
     envoyées (avant, Out n portait toujours la Track n). Le retour « Out N » par Track devient un choix à faire dans
     MD Drums, et une Track au moins partage une sortie.
+- 2026-10-17 : fermé, dépassé. Aucun External Instrument dans ce que la carte a construit. Le jeu en direct passe par
+  le device posé devant MD Drums sur sa propre piste (ticket 13), les Locks liés par la règle du canal 1 (ticket 16,
+  mesuré). L'impression (tickets 07 et 22) écrit chaque Track sur une piste MIDI dont la sortie va droit à la piste de
+  MD Drums sur « N-MD Drums » (le canal gardé), vérifiée dans Live le 2026-10-16 ; depuis un clip imprimé, MD Drums
+  sonne au même échantillon qu'en direct (ticket 04). Le son de chaque Track revient par le paramètre Out de
+  MD Drums (Main ou Out 01-15), un réglage de MD Drums que le device ne touche pas.

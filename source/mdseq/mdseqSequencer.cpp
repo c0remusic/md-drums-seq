@@ -609,6 +609,15 @@ namespace mdseq
 		if(playing)
 			out(tick, noteStatus(NoteOff, channel), note, 0);
 		out(tick, noteStatus(NoteOn, channel), note, _event.velocity);
+		// Played live, a Lock ends at once, its planned note-off dropped: MD Drums reads a Lock at its note-on, and Live
+		// keeps the notes a Max device holds in a set of 128, which a note-on overflowing it makes Live quit (issue
+		// 24). Printed, it keeps its length, which a clip's note needs.
+		if(_event.kind == Kind::Lock && !rendering())
+		{
+			out(tick, noteStatus(NoteOff, channel), note, 0);
+			playing = 0;
+			return;
+		}
 		playing = _event.note;
 	}
 

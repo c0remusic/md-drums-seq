@@ -23,8 +23,10 @@ their Track's MIDI channel, velocity 1-63 giving values 0-62 and 64-127 themselv
   scheduler thread only, and never allocates, locks or blocks there; what the main thread shows of a wake, its
   `Playhead` (the step, the Pattern played and the one queued), packs into one word that the adapter hands over
   atomically, as it does the last start's seed. It places events in subticks, 840 to a step, so that
-  ratchets (1-8 to a step) and micro-timing (24ths) fall on integers, and produces a step's events already in order:
-  the heaviest step holds 6400 of them, and a wake must stay well under Live's 1.45 ms vector
+  ratchets (1-8 to a step) and micro-timing (24ths) fall on integers. Played live, a Lock's note-off follows its
+  note-on at once: Live keeps the notes a Max device holds in a set of 128 and quits when it overflows (issue 24);
+  printed (`prepareRender`), a Lock keeps its length, which a clip's note needs. It produces a step's events already
+  in order: the heaviest step holds 6400 of them, and a wake must stay well under Live's 1.45 ms vector
   (`mdseqSequencerTest` times it). Swing is the Machinedrum's: the Pattern's amount, 50-80 %, delays the steps of its
   swing row (every second step by default, every Track's) by (2 x amount - 1) of a step, rounded to a subtick, before
   their micro-timing; a step's last note-offs can then fall 2.56 steps after its place, so the queue holds four steps. `mdseqEditor.*` is the interface state on the main thread,
@@ -61,11 +63,13 @@ their Track's MIDI channel, velocity 1-63 giving values 0-62 and 64-127 themselv
   needs, which the external reports in the Max console), the panel keys and how the patch routes them, the Scale
   menu's labels; the external registers its methods from it. A menu's value goes both ways as its index (Length,
   Ratchets, Swing and Passes count from their first item), and the column numbers are one indexed key.
-  `mdseqKit.*` is the device's side of ADR 0003: `KitLink` draws its 24-bit id, says when to send the hello (notes
-  124-127 whose velocities carry the id: at the first look, then every second while MD Drums has written no file,
-  every five seconds once it has) and reads `<temp>/md-drums-seq/<id>.kit`, MD Drums' answer: each Track's Machine,
-  the Machine's names for SYN1-8 and the Kit's values, in a text format the device reads at version 1, skipping the
-  lines it does not know.
+  `mdseqKit.*` is the device's side of ADR 0003: `KitLink` draws its 24-bit id and reads
+  `<temp>/md-drums-seq/<id>.kit`, MD Drums' answer: each Track's Machine, the Machine's names for SYN1-8 and the Kit's
+  values, in a text format the device reads at version 1, skipping the lines it does not know; a file there that does
+  not open (`KitFile::busy()`: Windows refuses to open a file while MD Drums' rename replaces it) keeps the Kit.
+  `HelloPace` says when to send the hello (notes 124-127 whose velocities carry the id: at the first tick, then every
+  second while there is no file, every five seconds while there is one), on the scheduler thread: MD Drums deletes the
+  file of a device it has not heard for 15 s, and Max's main thread stops for seconds in Live (issue 32).
 - `source/mdseqTest/`: the core's tests, one executable per module with a plain `main`, driven in virtual time.
 - `source/mdseqExternal/`: `mdseq.mxe64`, the adapter over the C SDK (`max-sdk-base`, fetched and pinned by the root
   `CMakeLists.txt`): it hands the core what it reads of Live's transport every millisecond, wakes on an ITM timer at
@@ -123,6 +127,13 @@ README, LICENSE and NOTICE), comes from `cmake --build build --config Release --
 (`tools/package.py`, which refuses a development build). The version is the root `project()`'s; the external posts it
 in the Max console. The licence is GPL-3.0-or-later (`LICENSE.md`; the Max SDK's in `NOTICE.md`). A release is a tag:
 never one without the user's word.
+
+Two repositories: `origin`, c0remusic/md-drums-seq-dev (private), holds the history of the work; `public`,
+c0remusic/md-drums-seq, holds the releases, and is where the device's update check looks. The public one never gets
+the private history: a release is one commit on `public/main` with the tree of the release's commit here and the
+previous release as its parent (`git commit-tree <commit>^{tree} -p public/main -F <message>`, pushed to `public` as
+`main`), then a tag and a GitHub release there with the zip, a prerelease while the version is below 1.0. 0.1.0 is
+public 4e23a2d, the tree of f9f0d6a here.
 
 Code conventions are gearmulator-md-drums': tabs (size 4), 120 columns, braces on their own line, namespace content
 indented (`source/.clang-format`); PascalCase classes, camelCase functions and variables, `m_` members, `_`
