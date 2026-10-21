@@ -31,6 +31,12 @@ and writes no undo history: run them on a set the user has saved, and expect the
 | `live-rename-device.mjs <track> <name> <new name>` | Renames a device whose name checks: a development build shown as "MD Drums Seq" for the release's screenshots (`docs/images`) |
 | `live-quiet-check.mjs <track name>` | Whether starting the transport sounds anything but that track: every other track's Arrangement clips and Session clips playing (read only) |
 | `live-track-volume.mjs <track name> [value]` | Reads or sets a track's fader: at 0 during `live-record-track.mjs`, which records Post FX, nothing reaches the speakers |
+| `live-crash-test.mjs setup <MD Drums path> <device path>`, then `run <s>`, `cleanup` | Issue 24's crash scenario: two development devices on the dense Pattern in front of MD Drums, fader at 0; only on a set the user accepts to lose |
+| `live-set-param.mjs <track> <device> <parameter> <value>` | Sets a device's parameter by name (the Push probe's "Probe Surface") |
+
+The Push probe of issue 33 (`../md-seq-push-probe.amxd`, `../push_probe.js`, written by `../make_devices.py`) logs what
+Push 2's grabbed encoders send to `%TEMP%\mdseq-push-probe.txt`; put both over `md-seq-channel-probe` in the User
+Library for the test, and the original back after. `../accent_levels.py` measures the Accent's check Pattern.
 
 Max ignores mouse messages posted to its windows (`PostMessage` of `WM_LBUTTONDOWN`/`UP` to the edit window: no Hit,
 nothing in the device's log): a click in the device needs the real pointer, which only the user moves.

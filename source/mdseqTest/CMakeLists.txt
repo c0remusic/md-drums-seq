@@ -1,5 +1,5 @@
 foreach(_test mdseqSequencerTest mdseqConditionTest mdseqViewTest mdseqEditorTest mdseqStoreTest mdseqPrintTest
-	mdseqPrinterTest mdseqProtocolTest mdseqKitTest mdseqUpdatesTest)
+	mdseqPrinterTest mdseqProtocolTest mdseqKitTest mdseqUpdatesTest mdseqPushTest mdseqCaptureTest)
 	add_executable(${_test} ${_test}.cpp mdseqTestSupport.h)
 	target_link_libraries(${_test} PRIVATE mdseqCore)
 	if(MSVC)

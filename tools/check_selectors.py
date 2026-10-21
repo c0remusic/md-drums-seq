@@ -5,7 +5,6 @@ the gate rather than being refused in Live. The device itself has none such: the
 
 Run: python -I check_selectors.py <vocabulary.json>; exits 1 on the first list of problems.
 """
-import json
 import pathlib
 import sys
 
@@ -43,8 +42,8 @@ def generator_takes(text, prepend):
 
 
 def main():
-	vocabulary = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 	make_device.load_vocabulary(sys.argv[1])
+	vocabulary = make_device.VOCABULARY
 	problems = []
 	for prepend, cases in ((False, MESSAGE_BOXES), (True, PREPENDS)):
 		form = "prepend" if prepend else "message box"

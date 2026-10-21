@@ -4,15 +4,18 @@
 // below 2^31, so that it comes back exact whatever number type Live keeps it as.
 //
 //   0  StoreMagic, which carries the format's version
-//   1  length | scale << 8 | (swing - 50) << 12 | own swing row << 17
+//   1  length | scale << 8 | (swing - 50) << 12 | own swing row << 17 | accent << 18 | slide row << 19
 //   when the swing row is not the default (every second step), it follows in three words of 22 bits, steps 1-22 first
+//   when the Pattern has an Accent (an amount or a row), the amount follows in a word, then its row in three words
+//   when the Pattern has a Slide row (a step in it), the row follows in three words
 //   then each step with a Hit, Track by Track and step by step, in two words and, when it holds Locks, six more:
 //      track | step << 4 | velocity << 10 | condition << 17 | locked << 24
 //      (ratchets - 1) | (curve + 100) << 3 | (micro + 23) << 11
 //      Locks 4i to 4i+3, 7 bits each, the first in the low bits
 //
-// The heaviest Pattern, every step of every Track with a Hit and Locks and a swing row of its own, takes
-// 2 + 3 + 1024 * 8 = 8197 words. A Pattern of a build before swing reads as one of 50 % on the default row.
+// The heaviest Pattern, every step of every Track with a Hit and Locks, a swing row of its own, an Accent and a Slide
+// row, takes 2 + 3 + 4 + 3 + 1024 * 8 = 8204 words. A Pattern of a build before swing reads as one of 50 % on the
+// default row, one of a build before the Accent or the Slide as one without them.
 //
 // PatternStore, below, decides when each Blob is written and what a value it gives back means.
 

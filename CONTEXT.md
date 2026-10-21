@@ -1,4 +1,4 @@
-# md-drums-seq
+# MoDule Seq
 
 A Max for Live sequencer that plays MD Drums from Live and prints what it plays into Live clips, which then play MD
 Drums without it.

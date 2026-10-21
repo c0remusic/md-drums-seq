@@ -26,7 +26,8 @@ namespace
 		Input::Kind::SetLength, Input::Kind::SetLock, Input::Kind::SetCondition, Input::Kind::SetFill,
 		Input::Kind::SetRatchets, Input::Kind::SetCurve, Input::Kind::SetMicro, Input::Kind::SetScale,
 		Input::Kind::SetPattern, Input::Kind::SetSwing, Input::Kind::SetSwingStep, Input::Kind::CopyPattern,
-		Input::Kind::DoubleLength, Input::Kind::ClearPattern};
+		Input::Kind::DoubleLength, Input::Kind::ClearPattern, Input::Kind::SetAccent, Input::Kind::SetAccentStep,
+		Input::Kind::SetSlideStep, Input::Kind::ChainEntry, Input::Kind::SetChain};
 	static_assert(sizeof(Kinds) / sizeof(Kinds[0]) == Input::KindCount, "every kind of edit");
 
 	// A selector or a key Max reads as one symbol, which a prepend and a route split on spaces.
@@ -101,7 +102,8 @@ namespace
 			CHECK(editsPattern(m) == any);
 		}
 		CHECK(messageInfo(Message::GridClick).forwards ==
-			(kindBit(Input::Kind::SetHit) | kindBit(Input::Kind::SetSwingStep)));
+			(kindBit(Input::Kind::SetHit) | kindBit(Input::Kind::SetSwingStep) | kindBit(Input::Kind::SetAccentStep) |
+				kindBit(Input::Kind::SetSlideStep)));
 
 		// The messages that must not take a control's initial value when the device loads: the old hand list of
 		// check_device.py, and the clicks in the two lcd objects, which toggle Hits.
@@ -110,7 +112,8 @@ namespace
 			if(editsPattern(m))
 				edits.insert(m.selector);
 		CHECK(edits == std::set<std::string>({"stripclick", "gridclick", "hit", "velocity", "length", "lock",
-			"condition", "ratchets", "curve", "micro", "scale", "swing", "copyto", "double", "clear"}));
+			"condition", "ratchets", "curve", "micro", "scale", "swing", "accent", "copyto", "double",
+			"clear"}));
 		CHECK(!editsPattern(messageInfo(Message::Mute)));
 		CHECK(!editsPattern(messageInfo(Message::Fill)));
 		CHECK(!editsPattern(messageInfo(Message::Pattern)));
@@ -136,13 +139,17 @@ namespace
 			{Message::StripClick, {stripX, 10}}, {Message::StripMouse, {1}}, {Message::GridClick, {gridX, gridY}},
 			{Message::GridMouse, {1}}, {Message::Track, {3}}, {Message::Page, {1}}, {Message::Half, {1}},
 			{Message::Follow, {0}}, {Message::Mute, {5, 1}}, {Message::Velocity, {64}}, {Message::Hit, {0}},
-			{Message::Length, {32}}, {Message::Scale, {2}}, {Message::Swing, {66}}, {Message::Lock, {5, 40}},
+			{Message::Length, {32}}, {Message::Scale, {2}}, {Message::Swing, {66}}, {Message::Accent, {40}},
+			{Message::TrigRow, {1}},
+			{Message::Lock, {5, 40}},
 			{Message::Condition, {3}},
 			{Message::Ratchets, {4}}, {Message::Curve, {50}}, {Message::Micro, {5}}, {Message::Fill, {1}},
 			{Message::Pattern, {2}}, {Message::CopyTo, {5}}, {Message::Double, {}}, {Message::FillEdit, {1}}, {Message::Clear, {}}, {Message::Chain, {0}},
 			{Message::ChainAdd, {3}}, {Message::RestoreChain, {1, 2, 3, 5}},
-			{Message::Redraw, {}}, {Message::Restore, {0, 0}}, {Message::Passes, {4}},
-			{Message::Print, {}}, {Message::LomId, {}}, {Message::LomReply, {}}, {Message::Updates, {1}}};
+			{Message::Redraw, {}}, {Message::Window, {0}}, {Message::Restore, {0, 0}}, {Message::PrintSource, {4}},
+			{Message::Print, {}}, {Message::LomId, {}}, {Message::LomReply, {}}, {Message::Updates, {1}},
+			{Message::Push, {1}}, {Message::PushValue, {11, 1}}, {Message::DeviceOn, {1}}, {Message::SelectedTrack, {}},
+			{Message::Capture, {}}, {Message::Output, {1}}};
 		CHECK(sent.size() == static_cast<size_t>(MessageCount));
 
 		for(const Sent& s : sent)
@@ -167,10 +174,7 @@ namespace
 
 			const MessageInfo& info = messageInfo(s.message);
 			const EditorOutput* out = toEditor(e, s.message, s.ints);
-			const bool external = s.message == Message::Restore || s.message == Message::Passes ||
-				s.message == Message::Print || s.message == Message::LomId || s.message == Message::LomReply ||
-				s.message == Message::Updates;
-			CHECK((out == nullptr) == external);
+			CHECK((out == nullptr) == ownedByExternal(s.message));
 			if(!out)
 				continue;
 			CHECK(info.forwards ? !out->forward.empty() : out->forward.empty());
@@ -283,6 +287,8 @@ namespace
 			{Message::Length, {47}, EDITOR_CALL(setLength(48))},
 			{Message::Scale, {2}, EDITOR_CALL(setScale(2))},
 			{Message::Swing, {12}, EDITOR_CALL(setSwing(62))},
+			{Message::Accent, {40}, EDITOR_CALL(setAccent(40))},
+			{Message::TrigRow, {1}, EDITOR_CALL(showTrigRow(1))},
 			{Message::Lock, {5, 40}, EDITOR_CALL(setLock(5, 40))},
 			{Message::Condition, {3}, EDITOR_CALL(setCondition(3))},
 			{Message::Ratchets, {3}, EDITOR_CALL(setRatchets(4))},
@@ -300,7 +306,9 @@ namespace
 			{Message::Chain, {0}, EDITOR_CALL(setChainMode(false))},
 			{Message::ChainAdd, {3}, EDITOR_CALL(chainAdd(3))},
 			{Message::RestoreChain, {1, 2, 3, 5}, EDITOR_CALL(restoreChain({1, 2, 3, 5}))},
-			{Message::Redraw, {}, EDITOR_CALL(redrawAll())}};
+			{Message::Redraw, {}, EDITOR_CALL(redrawAll())},
+			{Message::Window, {0}, EDITOR_CALL(setWindow(false))},
+			{Message::Window, {1}, EDITOR_CALL(setWindow(true))}};
 
 		std::set<Message> covered;
 		for(const Call& c : calls)
@@ -327,7 +335,7 @@ namespace
 		}
 		// Every message of the Editor's is in the table.
 		for(const MessageInfo& m : messages())
-			if(m.message < Message::Restore)
+			if(!ownedByExternal(m.message))
 				CHECK(covered.count(m.message) == 1);
 	}
 
@@ -389,8 +397,8 @@ namespace
 			if(m.needs)
 				needing.insert(m.selector + std::string(" ") + std::to_string(m.needs));
 		}
-		CHECK(fixing == std::set<std::string>({"mute 1", "lock 1", "restore 1"}));
-		CHECK(needing == std::set<std::string>({"mute 2", "lock 2", "restore 1"}));
+		CHECK(fixing == std::set<std::string>({"mute 1", "lock 1", "restore 1", "pushvalue 1"}));
+		CHECK(needing == std::set<std::string>({"mute 2", "lock 2", "restore 1", "pushvalue 2"}));
 		for(const PanelKeyInfo& k : panelKeys())
 			CHECK(holds(j, std::string("{\"key\": \"") + k.key + "\", \"indexed\": " + std::to_string(k.indexed) +
 				"}"));
@@ -404,7 +412,8 @@ namespace
 		CHECK(holds(j, "\"!1ST\"]"));
 		CHECK(holds(j, "\"noLock\": 63"));
 		CHECK(holds(j, "\"limits\": {\"tracks\": 16, \"patterns\": 16, \"steps\": 64, \"locks\": 24, \"ratchets\": 8, "
-			"\"curve\": 100, \"micro\": 23, \"passes\": 16, \"minSwing\": 50, \"maxSwing\": 80}"));
+			"\"curve\": 100, \"micro\": 23, \"passes\": 16, \"minSwing\": 50, \"maxSwing\": 80, "
+			"\"maxAccent\": 127}"));
 	}
 }
 

@@ -2,6 +2,7 @@
 
 #include "mdseqCondition.h"
 #include "mdseqEdit.h"
+#include "mdseqText.h"
 
 #include <algorithm>
 #include <cctype>
@@ -48,13 +49,16 @@ namespace mdseq
 			return std::isdigit(static_cast<unsigned char>(last[0])) ? _machine.substr(0, 1) + last : last;
 		}
 
-		// "04", or "04 CP" once the Machine is known.
+		// "04", or "04 CP" once the Machine is known; a name without a dash, a user's Sample's, cut to what the tab
+		// shows whole ("01 gret" for gretsch_tom_06), where Live would cut a letter in two.
 		std::string trackLabel(const std::optional<Kit>& _kit, const int _track)
 		{
 			char number[8];
 			std::snprintf(number, sizeof(number), "%02d", _track + 1);
 			const std::string machine = machineName(_kit, _track);
-			return machine.empty() ? std::string(number) : std::string(number) + " " + shortName(machine);
+			if(machine.empty())
+				return number;
+			return fitText(std::string(number) + " " + shortName(machine), fit::TrackTab);
 		}
 	}
 
@@ -71,12 +75,22 @@ namespace mdseq
 	const EditorOutput& Editor::redrawAll()
 	{
 		m_out.clear();
+		kitPanel();
+		drawPattern();
+		return m_out;
+	}
+
+	void Editor::drawPattern()
+	{
+		keepPageInLength();
 		redrawStrip();
 		redrawGrid();
-		kitPanel();
 		selectionPanel();
 		lengthPanel();
+		pagesPanel();
 		swingPanel();
+		accentPanel();
+		trigRowPanel();
 		halfPanel();
 		statusPanel();
 		patternPanel();
@@ -84,7 +98,6 @@ namespace mdseq
 		panelInts(PanelKey::FillEdit, {m_fillEdit ? 1 : 0});
 		panelInts(PanelKey::ChainMode, {m_chainMode ? 1 : 0});
 		chainPanel();
-		return m_out;
 	}
 
 	const EditorOutput& Editor::stripMouse(const bool _down)
@@ -129,10 +142,10 @@ namespace mdseq
 		const bool first = m_paintValue < 0;
 		m_lastGridCell = cell;
 		const int step = m_half * StepsPerHalf + cell.column;
-		// The swing row is the Pattern's, not a Track's: its steps toggle and paint, and the selection stays.
-		if(cell.row == grid::SwingRow)
+		// The trig row is the Pattern's, not a Track's: its steps toggle and paint, and the selection stays.
+		if(cell.row == grid::TrigRow)
 		{
-			paintSwing(step);
+			paintTrig(step);
 			return m_out;
 		}
 		if(first)
@@ -175,6 +188,8 @@ namespace mdseq
 		{
 			m_track = track;
 			redrawStrip();
+			// The strip's tab too, when Push shows the Track.
+			panelInts(PanelKey::TrackIndex, {m_track});
 		}
 		return m_out;
 	}
@@ -182,12 +197,15 @@ namespace mdseq
 	const EditorOutput& Editor::showPage(const int _page)
 	{
 		m_out.clear();
-		const int page = std::clamp(_page, 0, MaxSteps / StepsPerPage - 1);
+		// A page past the length is off: the strip stays where it is. The pages are told again either way, as the
+		// patch's button clicked has changed its own state.
+		const int page = std::clamp(_page, 0, pageCount() - 1);
 		if(page != m_page)
 		{
 			m_page = page;
 			redrawStrip();
 		}
+		pagesPanel();
 		return m_out;
 	}
 
@@ -321,7 +339,7 @@ namespace mdseq
 	{
 		m_out.clear();
 		if(edit({Input::Kind::SetLength, 0, 0, _length}))
-			lengthPanel();
+			lengthChanged();
 		return m_out;
 	}
 
@@ -339,8 +357,30 @@ namespace mdseq
 		if(edit({Input::Kind::SetSwing, 0, 0, _percent}))
 		{
 			swingPanel();
-			drawSwingRow();
+			if(m_trigRow == TrigRow::Swing)
+				drawTrigRow();
 		}
+		return m_out;
+	}
+
+	const EditorOutput& Editor::showTrigRow(const int _row)
+	{
+		m_out.clear();
+		const auto row = static_cast<TrigRow>(std::clamp(_row, 0, TrigRowCount - 1));
+		if(row != m_trigRow)
+		{
+			m_trigRow = row;
+			drawTrigRow();
+		}
+		trigRowPanel();
+		return m_out;
+	}
+
+	const EditorOutput& Editor::setAccent(const int _amount)
+	{
+		m_out.clear();
+		if(edit({Input::Kind::SetAccent, 0, 0, _amount}))
+			accentPanel();
 		return m_out;
 	}
 
@@ -368,40 +408,17 @@ namespace mdseq
 		}
 		redrawStripStep(previous);
 		redrawStripStep(step);
-
-		// A chain plays: each Pass that begins queues the next of its Patterns. Live starting again goes on from the
-		// entry shown (the first after the one last played that holds it), else from the first.
-		if(m_chainActive && step >= 0)
-		{
-			if(previous < 0)
-			{
-				int found = -1;
-				for(int i = 0; i < m_chainLength && found < 0; ++i)
-				{
-					const int entry = (std::max(m_chainPos, 0) + i) % m_chainLength;
-					if(m_chain[static_cast<size_t>(entry)] == m_shown)
-						found = entry;
-				}
-				m_chainPos = found;
-				chainNext();
-			}
-			else if(step < previous)
-			{
-				m_chainPos = (m_chainPos + 1) % m_chainLength;
-				chainNext();
-			}
-		}
 		return m_out;
 	}
 
 	void Editor::redrawGridColumn(const int _step)
 	{
-		// A step's column of the grid, its swing cell included, when the half shows it.
+		// A step's column of the grid, its trig cell included, when the half shows it.
 		if(_step < 0 || _step / StepsPerHalf != m_half)
 			return;
 		for(int t = 0; t < TrackCount; ++t)
 			drawGridCell(t, _step % StepsPerHalf);
-		drawSwingCell(_step % StepsPerHalf);
+		drawTrigCell(_step % StepsPerHalf);
 	}
 
 	void Editor::redrawStripStep(const int _step)
@@ -410,19 +427,27 @@ namespace mdseq
 			drawStripCell(_step % StepsPerPage);
 	}
 
-	const EditorOutput& Editor::follow(const int _pattern, const int _queued)
+	const EditorOutput& Editor::follow(const int _pattern, const int _queued, const int _chain)
 	{
 		m_out.clear();
 		if(_pattern < 0 || _pattern >= PatternCount)
 			return m_out;
 		const int queued = _queued >= 0 && _queued < PatternCount ? _queued : -1;
+		const int chain = _chain >= 0 && _chain < ChainLength ? _chain : -1;
+		if(chain != m_chainPos)
+		{
+			m_chainPos = chain;
+			if(m_chainActive)
+				chainPanel();
+		}
 		if(_pattern == m_shown && queued == m_queued)
 			return m_out;
 		m_queued = queued;
 		if(_pattern != m_shown)
 		{
 			m_shown = _pattern;
-			return redrawAll();
+			drawPattern();
+			return m_out;
 		}
 		patternPanel();
 		return m_out;
@@ -453,7 +478,7 @@ namespace mdseq
 		{
 			m_shown = _pattern;
 			m_queued = -1;
-			redrawAll();
+			drawPattern();
 		}
 		else
 		{
@@ -472,34 +497,38 @@ namespace mdseq
 		panelInts(PanelKey::ChainMode, {_on ? 1 : 0});
 		if(_on)
 		{
-			// A new chain: the one playing stops, the Patterns clicked from now on make the next.
+			// A new chain: the one playing stops (the Pattern it queued still follows), the Patterns clicked from now
+			// on make the next.
+			if(m_chainActive)
+				m_out.forward.push_back({Input::Kind::SetChain, 0, 0, 0});
 			m_chainActive = false;
 			m_chainLength = 0;
 		}
 		else if(m_chainLength == 1)
 		{
-			choose(m_chain[0]);	// may draw everything again: the mode's panel value with it
+			choose(m_chain[0]);	// may draw everything again, the mode's panel value with it
 			m_chainLength = 0;
 		}
 		else if(m_chainLength >= 2)
 		{
-			// Stopped, its first Pattern is shown at once and the next queued when Live plays; playing, it starts at
-			// the end of the Pass, at once if its first Pattern is the one playing.
+			// Stopped, its first Pattern is shown at once; playing, it starts at the end of the Pass, at once if its
+			// first Pattern is the one playing. The Sequencer queues each next one, and reports where it plays.
 			m_chainActive = true;
-			if(m_played >= 0)
-				m_chainPos = m_chain[0] == m_shown ? 0 : -1;
-			else
-			{
-				if(m_chain[0] != m_shown)
-					choose(m_chain[0]);
-				m_chainPos = 0;
-			}
-			if(m_played >= 0)
-				chainNext();
+			if(m_played < 0 && m_chain[0] != m_shown)
+				choose(m_chain[0]);
+			m_chainPos = m_chain[0] == m_shown ? 0 : -1;
+			forwardChain();
 		}
 		chainPanel();
 		chainStore();
 		return m_out;
+	}
+
+	void Editor::forwardChain()
+	{
+		for(int i = 0; i < m_chainLength; ++i)
+			m_out.forward.push_back({Input::Kind::ChainEntry, 0, i, m_chain[static_cast<size_t>(i)]});
+		m_out.forward.push_back({Input::Kind::SetChain, 0, 0, m_chainActive ? m_chainLength : 0});
 	}
 
 	void Editor::chainStore()
@@ -531,10 +560,11 @@ namespace mdseq
 		m_chainLength = length;
 		for(int i = 0; i < length; ++i)
 			m_chain[static_cast<size_t>(i)] = _words[static_cast<size_t>(2 + i)];
-		// From its first Pattern, queued once Live plays (or the entry shown, found then).
+		// From its first Pattern, queued once Live plays (or the place holding the Pattern shown, found then).
 		m_chainPos = -1;
 		panelInts(PanelKey::ChainMode, {0});
 		chainPanel();
+		forwardChain();
 		return m_out;
 	}
 
@@ -546,14 +576,6 @@ namespace mdseq
 		m_chain[static_cast<size_t>(m_chainLength++)] = _pattern;
 		chainPanel();
 		return m_out;
-	}
-
-	void Editor::chainNext()
-	{
-		const int next = m_chain[static_cast<size_t>((m_chainPos + 1) % m_chainLength)];
-		if(next != m_shown)
-			choose(next);
-		chainPanel();
 	}
 
 	void Editor::chainPanel()
@@ -579,18 +601,55 @@ namespace mdseq
 
 	const EditorOutput& Editor::copyPattern(const int _target)
 	{
-		m_out.clear();
-		if(_target >= 0 && _target < PatternCount && !(m_bank[_target] == m_bank[m_shown]))
-		{
-			// The edit names the Pattern it writes, as every edit does, the store writing that one's Blob.
-			m_bank[_target] = m_bank[m_shown];
-			Input in{Input::Kind::CopyPattern, 0, 0, m_shown};
-			in.pattern = _target;
-			m_out.forward.push_back(in);
-			patternStatePanel(_target);
-		}
+		copyPattern(_target, m_shown);
 		panelInts(PanelKey::CopyTo, {0});
 		return m_out;
+	}
+
+	const EditorOutput& Editor::copyPattern(const int _target, const int _source)
+	{
+		m_out.clear();
+		if(_target < 0 || _target >= PatternCount || _source < 0 || _source >= PatternCount ||
+			m_bank[_target] == m_bank[_source])
+			return m_out;
+		// The edit names the Pattern it writes, as every edit does, the store writing that one's Blob.
+		m_bank[_target] = m_bank[_source];
+		Input in{Input::Kind::CopyPattern, 0, 0, _source};
+		in.pattern = _target;
+		m_out.forward.push_back(in);
+		if(_target == m_shown)
+			drawPattern();
+		else
+			patternStatePanel(_target);
+		return m_out;
+	}
+
+	const EditorOutput& Editor::selectStep(const int _track, const int _step)
+	{
+		m_out.clear();
+		if(_track < 0 || _track >= TrackCount || _step < 0 || _step >= MaxSteps)
+			return m_out;
+		select(_track, _step);
+		redrawCell(_track, _step);
+		selectionPanel();
+		return m_out;
+	}
+
+	PatternState Editor::patternState(const int _pattern) const
+	{
+		if(_pattern == m_shown)
+			return PatternState::Shown;
+		if(_pattern == m_queued && m_queuedOutlined)
+			return PatternState::Queued;
+		return used(_pattern) ? PatternState::Used : PatternState::Empty;
+	}
+
+	int Editor::lockOrKit(const int _param) const
+	{
+		if(_param < 0 || _param >= LockCount)
+			return -1;
+		const uint8_t lock = stepSelected().locks[static_cast<size_t>(_param)];
+		return lock != NoLock ? lock : kitValue(_param);
 	}
 
 	const EditorOutput& Editor::setFillEdit(const bool _on)
@@ -607,13 +666,24 @@ namespace mdseq
 
 	const EditorOutput& Editor::clearPattern()
 	{
+		return clearPattern(m_shown);
+	}
+
+	const EditorOutput& Editor::clearPattern(const int _pattern)
+	{
 		m_out.clear();
-		Input in{Input::Kind::ClearPattern, 0, 0, 0};
-		in.pattern = m_shown;
-		if(!applyEdit(m_bank[m_shown], m_mutes, in))
+		if(_pattern < 0 || _pattern >= PatternCount)
 			return m_out;
-		// Everything changes, its length, scale and swing with its steps: drawn again whole, then forwarded.
-		redrawAll();
+		Input in{Input::Kind::ClearPattern, 0, 0, 0};
+		in.pattern = _pattern;
+		if(!applyEdit(m_bank[static_cast<size_t>(_pattern)], m_mutes, in))
+			return m_out;
+		// The Pattern shown: everything changes, its length, scale and swing with its steps, drawn again whole; another,
+		// only its button. Then forwarded.
+		if(_pattern == m_shown)
+			drawPattern();
+		else
+			patternStatePanel(_pattern);
 		m_out.forward.push_back(in);
 		return m_out;
 	}
@@ -623,10 +693,8 @@ namespace mdseq
 		m_out.clear();
 		if(edit({Input::Kind::DoubleLength, 0, 0, 0}))
 		{
-			redrawStrip();
-			redrawGrid();
+			lengthChanged();
 			selectionPanel();
-			lengthPanel();
 		}
 		return m_out;
 	}
@@ -638,17 +706,27 @@ namespace mdseq
 			return m_out;
 		if(_in.kind == Input::Kind::SetMute)
 			mutePanel(_in.track, _in.value != 0);
-		else if(_in.kind == Input::Kind::SetLength || _in.kind == Input::Kind::SetScale)
+		else if(_in.kind == Input::Kind::SetLength)
+			lengthChanged();
+		else if(_in.kind == Input::Kind::SetScale)
 			lengthPanel();
 		else if(_in.kind == Input::Kind::SetSwing)
 		{
 			swingPanel();
-			drawSwingRow();
+			if(m_trigRow == TrigRow::Swing)
+				drawTrigRow();
 		}
-		else if(_in.kind == Input::Kind::SetSwingStep)
+		else if(_in.kind == Input::Kind::SetAccent)
 		{
-			if(_in.step / StepsPerHalf == m_half)
-				drawSwingCell(_in.step % StepsPerHalf);
+			accentPanel();
+		}
+		else if(_in.kind == Input::Kind::SetSwingStep || _in.kind == Input::Kind::SetAccentStep ||
+			_in.kind == Input::Kind::SetSlideStep)
+		{
+			if(_in.kind == trigKind() && _in.step / StepsPerHalf == m_half)
+				drawTrigCell(_in.step % StepsPerHalf);
+			if(_in.kind == Input::Kind::SetAccentStep)
+				redrawStripStep(_in.step);
 		}
 		else
 		{
@@ -666,7 +744,10 @@ namespace mdseq
 			return m_out;
 		m_bank[_index] = _pattern;
 		if(_index == m_shown)
-			return redrawAll();
+		{
+			drawPattern();
+			return m_out;
+		}
 		patternStatePanel(_index);
 		return m_out;
 	}
@@ -695,12 +776,39 @@ namespace mdseq
 			redrawCell(_track, _step);
 	}
 
-	void Editor::paintSwing(const int _step)
+	Input::Kind Editor::trigKind() const
+	{
+		switch(m_trigRow)
+		{
+		case TrigRow::Swing:	return Input::Kind::SetSwingStep;
+		case TrigRow::Accent:	return Input::Kind::SetAccentStep;
+		case TrigRow::Slide:	break;
+		}
+		return Input::Kind::SetSlideStep;
+	}
+
+	bool Editor::inTrigRow(const int _step) const
+	{
+		const Pattern& pattern = m_bank[m_shown];
+		switch(m_trigRow)
+		{
+		case TrigRow::Swing:	return pattern.inSwingRow(_step);
+		case TrigRow::Accent:	return pattern.inAccentRow(_step);
+		case TrigRow::Slide:	break;
+		}
+		return pattern.inSlideRow(_step);
+	}
+
+	void Editor::paintTrig(const int _step)
 	{
 		if(m_paintValue < 0)
-			m_paintValue = m_bank[m_shown].inSwingRow(_step) ? 0 : 1;
-		if(edit({Input::Kind::SetSwingStep, 0, _step, m_paintValue}))
-			drawSwingCell(_step % StepsPerHalf);
+			m_paintValue = inTrigRow(_step) ? 0 : 1;
+		if(!edit({trigKind(), 0, _step, m_paintValue}))
+			return;
+		drawTrigCell(_step % StepsPerHalf);
+		// The strip marks the Accent's steps, whichever row the window shows.
+		if(m_trigRow == TrigRow::Accent)
+			redrawStripStep(_step);
 	}
 
 	void Editor::select(const int _track, const int _step)
@@ -729,15 +837,59 @@ namespace mdseq
 		m_out.strip.push_back({DrawOp::Kind::Clear, {}, 0, 0, 0, 0});
 		for(int c = 0; c < strip::Cells; ++c)
 			drawStripCell(c);
+		// The Pattern's end, in the gap after its last step: no cell covers it, so it stays until the next redraw.
+		DrawOp end{};
+		if(strip::endLine(m_bank[m_shown].length, m_page, end))
+			m_out.strip.push_back(end);
+	}
+
+	const EditorOutput& Editor::setWindow(const bool _shown)
+	{
+		m_out.clear();
+		if(_shown == m_window)
+			return m_out;
+		m_window = _shown;
+		redrawGrid();
+		return m_out;
 	}
 
 	void Editor::redrawGrid()
 	{
+		if(!m_window)
+			return;
 		m_out.grid.push_back({DrawOp::Kind::Clear, {}, 0, 0, 0, 0});
 		for(int t = 0; t < grid::Rows; ++t)
 			for(int c = 0; c < grid::Columns; ++c)
 				drawGridCell(t, c);
-		drawSwingRow();
+		drawTrigRow();
+		DrawOp end{};
+		if(grid::endLine(m_bank[m_shown].length, m_half, end))
+			m_out.grid.push_back(end);
+	}
+
+	void Editor::lengthChanged()
+	{
+		// The steps past the length change their look, the end line moves, and the strip's page stays within it.
+		keepPageInLength();
+		redrawStrip();
+		redrawGrid();
+		lengthPanel();
+		pagesPanel();
+	}
+
+	int Editor::pageCount() const
+	{
+		return (m_bank[m_shown].length + StepsPerPage - 1) / StepsPerPage;
+	}
+
+	void Editor::keepPageInLength()
+	{
+		m_page = std::min(m_page, pageCount() - 1);
+	}
+
+	void Editor::pagesPanel()
+	{
+		panelInts(PanelKey::Pages, {m_page, pageCount()});
 	}
 
 	CellLook Editor::lookOf(const int _step) const
@@ -745,6 +897,7 @@ namespace mdseq
 		CellLook look;
 		look.beat = _step % 4 == 0;
 		look.played = _step == m_played;
+		look.past = _step >= m_bank[m_shown].length;
 		return look;
 	}
 
@@ -754,20 +907,27 @@ namespace mdseq
 		return m_fillEdit && _step.hit && kind != ConditionInfo::Kind::Fill && kind != ConditionInfo::Kind::NotFill;
 	}
 
-	void Editor::drawSwingRow()
+	void Editor::drawTrigRow()
 	{
 		for(int c = 0; c < grid::Columns; ++c)
-			drawSwingCell(c);
+			drawTrigCell(c);
 	}
 
-	void Editor::drawSwingCell(const int _column)
+	void Editor::drawTrigCell(const int _column)
 	{
+		if(!m_window)
+			return;
 		const int step = m_half * StepsPerHalf + _column;
-		const Pattern& pattern = m_bank[m_shown];
-		CellLook look = lookOf(step);
-		DrawOp ops[MaxSwingCellOps];
-		const size_t n = mdseq::drawSwingCell(pattern.inSwingRow(step), pattern.swing, look,
-			grid::cellX(_column), grid::cellY(grid::SwingRow), grid::CellWidth, grid::CellHeight, ops);
+		const CellLook look = lookOf(step);
+		const int x = grid::cellX(_column);
+		const int y = grid::cellY(grid::TrigRow);
+		DrawOp ops[MaxMarkCellOps];
+		size_t n = 0;
+		if(m_trigRow == TrigRow::Swing)
+			n = drawSwingCell(inTrigRow(step), m_bank[m_shown].swing, look, x, y, grid::CellWidth, grid::CellHeight, ops);
+		else
+			n = drawMarkCell(inTrigRow(step), m_trigRow == TrigRow::Accent ? colours::Accented : colours::Sliding, look,
+				x, y, grid::CellWidth, grid::CellHeight, ops);
 		m_out.grid.insert(m_out.grid.end(), ops, ops + n);
 	}
 
@@ -777,6 +937,7 @@ namespace mdseq
 		const Step& s = m_bank[m_shown].steps[m_track][step];
 		CellLook look = lookOf(step);
 		look.faded = faded(s);
+		look.accented = m_bank[m_shown].inAccentRow(step);
 		DrawOp ops[MaxCellOps];
 		const size_t n = drawCell(s, look, strip::cellX(_cell), 0, strip::CellWidth, strip::Height, ops);
 		m_out.strip.insert(m_out.strip.end(), ops, ops + n);
@@ -784,6 +945,8 @@ namespace mdseq
 
 	void Editor::drawGridCell(const int _row, const int _column)
 	{
+		if(!m_window)
+			return;
 		const int step = m_half * StepsPerHalf + _column;
 		const Step& s = m_bank[m_shown].steps[_row][step];
 		CellLook look = lookOf(step);
@@ -831,8 +994,11 @@ namespace mdseq
 			tabs.texts.push_back(trackLabel(m_kit, t));
 		m_out.panel.push_back(std::move(tabs));
 		panelInts(PanelKey::TrackIndex, {m_track});
+		// A row's Machine as long as its box holds: a user's Sample takes its file's name, a User Machine its
+		// package's.
 		for(int t = 0; t < TrackCount; ++t)
-			m_out.panel.push_back({panelKey(PanelKey::TrackName), {t}, {machineName(m_kit, t)}});
+			m_out.panel.push_back({panelKey(PanelKey::TrackName), {t},
+				{fitText(machineName(m_kit, t), fit::TrackName)}});
 	}
 
 	// The step selected's Track: its title and the names its Machine gives SYN1-8.
@@ -841,7 +1007,8 @@ namespace mdseq
 		const std::string machine = machineName(m_kit, m_selectedTrack);
 		char text[64];
 		std::snprintf(text, sizeof(text), "Track %02d", m_selectedTrack + 1);
-		panelText(PanelKey::TrackTitle, machine.empty() ? text : (std::string(text) + " " + machine).c_str());
+		const std::string title = machine.empty() ? std::string(text) : std::string(text) + " " + machine;
+		panelText(PanelKey::TrackTitle, fitText(title, fit::TrackTitle).c_str());
 		for(int p = 0; p < SynCount; ++p)
 		{
 			std::string name = "SYN" + std::to_string(p + 1);
@@ -849,7 +1016,8 @@ namespace mdseq
 				name = "unused";
 			else if(!machine.empty())
 				name = m_kit->tracks[static_cast<size_t>(m_selectedTrack)].synNames[static_cast<size_t>(p)];
-			m_out.panel.push_back({panelKey(PanelKey::LockName), {p}, {name}});
+			m_out.panel.push_back({panelKey(PanelKey::LockName), {p},
+				{fitText(name, fit::LockName)}});
 		}
 	}
 
@@ -888,6 +1056,16 @@ namespace mdseq
 		panelInts(PanelKey::Swing, {m_bank[m_shown].swing - MinSwing});
 	}
 
+	void Editor::accentPanel()
+	{
+		panelInts(PanelKey::Accent, {m_bank[m_shown].accent});
+	}
+
+	void Editor::trigRowPanel()
+	{
+		panelInts(PanelKey::TrigRow, {static_cast<int>(m_trigRow)});
+	}
+
 	void Editor::halfPanel()
 	{
 		// Over the grid, the number of every fourth step of the half shown, counted from 1.
@@ -922,12 +1100,7 @@ namespace mdseq
 
 	void Editor::patternStatePanel(const int _pattern)
 	{
-		PatternState state = used(_pattern) ? PatternState::Used : PatternState::Empty;
-		if(_pattern == m_shown)
-			state = PatternState::Shown;
-		else if(_pattern == m_queued && m_queuedOutlined)
-			state = PatternState::Queued;
-		panelInts(PanelKey::PatternState, {_pattern, static_cast<int>(state)});
+		panelInts(PanelKey::PatternState, {_pattern, static_cast<int>(patternState(_pattern))});
 	}
 
 	bool Editor::used(const int _pattern) const
@@ -958,9 +1131,8 @@ namespace mdseq
 	{
 		// A Lock's dial on the Lock, or unlit on the Kit's value, so that turning it starts the Lock from there; on its
 		// middle, the Kit's position, while MD Drums does not tell the value.
-		const int value = stepSelected().locks[_param];
-		const int kit = kitValue(_param);
-		lockPanel(_param, value != NoLock ? value : kit >= 0 ? kit : NoLock);
+		const int value = lockOrKit(_param);
+		lockPanel(_param, value >= 0 ? value : NoLock);
 	}
 
 	void Editor::lockPanel(const int _param, const int _position)

@@ -88,6 +88,46 @@ namespace
 			near(printed.tracks[2][0].duration, 0.25));
 	}
 
+	// Accent (issue 26): note 88 after the Hit of a step in the Accent row, its velocity the amount on the Locks' scale,
+	// as long as the Hit in the clip: printed, it keeps a length, which a clip's note needs.
+	void accent()
+	{
+		Pattern p;
+		p.length = 4;
+		p.accent = 100;
+		p.accentSteps = 1ull << 1;
+		p.steps[0][1] = hit();
+		p.steps[0][2] = hit();
+		const Printed printed = printPattern(p, 1, 1, false);
+		const std::vector<PrintedNote>& notes = printed.tracks[0];
+		CHECK(notes.size() == 3);
+		CHECK(notes[0].pitch == FirstHitNote && near(notes[0].start, 0.25) && near(notes[0].duration, 0.25));
+		CHECK(notes[1].pitch == AccentNote && notes[1].velocity == 100 && near(notes[1].start, 0.25) &&
+			near(notes[1].duration, 0.25));
+		CHECK(notes[2].pitch == FirstHitNote && near(notes[2].start, 0.5));
+	}
+
+	// Slide (issue 26): notes 89 (the clocks to the next Hit) and 90-113 (its Locks) after the Hit of a step in the
+	// Slide row, as long as the Hit in the clip, so that the clip plays the Slide again.
+	void slide()
+	{
+		Pattern p;
+		p.length = 4;
+		p.slideSteps = 1ull << 1;
+		p.steps[0][1] = hit();
+		p.steps[0][1].locks[3] = 20;
+		p.steps[0][3] = hit();
+		p.steps[0][3].locks[3] = 90;
+		const Printed printed = printPattern(p, 1, 1, false);
+		const std::vector<PrintedNote>& notes = printed.tracks[0];
+		CHECK(notes.size() == 6);	// the next Hit's Lock last
+		CHECK(notes[1].pitch == FirstLockNote + 3 && notes[1].velocity == 21);
+		CHECK(notes[2].pitch == SlideNote && notes[2].velocity == 12 && near(notes[2].start, 0.25) &&
+			near(notes[2].duration, 0.25));
+		CHECK(notes[3].pitch == FirstSlideTargetNote + 3 && notes[3].velocity == 90 && near(notes[3].duration, 0.25));
+		CHECK(notes[4].pitch == FirstHitNote && near(notes[4].start, 0.75));
+	}
+
 	void conditionsAndFill()
 	{
 		// A:B over the Passes printed, counted from 1.
@@ -138,6 +178,8 @@ int main()
 	hitsAndLocks();
 	ratchetsAndEdges();
 	swing();
+	accent();
+	slide();
 	conditionsAndFill();
 	scaleAndEmpty();
 	return mdseqTest::finish("mdseqPrintTest");

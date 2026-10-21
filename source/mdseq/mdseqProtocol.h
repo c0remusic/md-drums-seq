@@ -41,6 +41,8 @@ namespace mdseq
 		Length,			// length i: the Length menu's index, one step at 0
 		Scale,			// scale i: 0-6, 1/8x to 2x
 		Swing,			// swing i: the Swing menu's index, 50 % at 0
+		Accent,			// accent a: the Accent's amount, 0-127
+		TrigRow,		// trigrow i: the trig row under the grid, 0 swing, 1 Accent, 2 Slide
 		Lock,			// lock param value: 0-127, NoLock (63) for the Kit
 		Condition,		// condition i: the index in the Conditions' menu
 		Ratchets,		// ratchets i: the Ratchets menu's index, one Hit at 0
@@ -56,15 +58,25 @@ namespace mdseq
 		ChainAdd,		// chainadd p: Pattern p appended to the chain built
 		RestoreChain,	// restorechain playing length patterns...: the chain as its pattr Blob keeps it in the set
 		Redraw,			// redraw: everything drawn again, once the device has loaded
-		// The external's own
+		Window,			// window 0|1: the edit window closed or shown, the grid drawn only while it shows
+		// The external's own, from Restore on (ownedByExternal): no Editor takes them
 		Restore,		// restore p words...: Pattern p as the set kept it, from its pattr Blob
-		Passes,			// passes i: the Passes menu's index, one Pass at 0
-		Print,			// print: the Pattern shown into Session clips
+		PrintSource,	// printsource i: the Print menu's index, Pattern ×(i + 1) below MaxPasses, the last take at
+						// MaxPasses
+		Print,			// print: the Pattern shown, or the last take, into Session clips, as the Print menu says
 		LomId,			// lomid id n: live.path's answer to "lom path ..."
 		LomReply,		// lomreply ...: live.object's answer to "lom obj ..."
-		Updates			// updates 0|1: whether the device looks for a newer release (mdseqUpdates.h)
+		Updates,		// updates 0|1: whether the device looks for a newer release (mdseqUpdates.h)
+		Push,			// push 0|1: the strip's switch, Push 2 taken while the device and its track have the focus
+		PushValue,		// pushvalue i values...: what live.observer i reports of Push (mdseqPush.h's observers)
+		DeviceOn,		// deviceon 0|1: the device switched on or off in Live
+		SelectedTrack,	// selectedtrack id n: the track Live has selected
+		Capture,		// capture: the last take into Session clips (issue 23)
+		Output			// output 0|1: the device plays MD Drums (0), or leaves it to the clips (1)
 	};
-	constexpr int MessageCount = static_cast<int>(Message::Updates) + 1;
+	constexpr int MessageCount = static_cast<int>(Message::Output) + 1;
+
+	constexpr bool ownedByExternal(const Message _message) { return _message >= Message::Restore; }
 
 	// An edit's kind as a bit, for the kinds a message forwards.
 	constexpr uint32_t kindBit(const Input::Kind _kind) { return 1u << static_cast<int>(_kind); }
@@ -126,6 +138,8 @@ namespace mdseq
 		Lom,			// lom path|id|obj ...: a message to live.path or live.object (the external's)
 		PrintStatus,	// printstatus text: what a print did (the external's)
 		Swing,			// swing i: the Swing menu's index, 50 % at 0
+		Accent,			// accent a: the Accent's amount, 0-127
+		TrigRow,		// trigrow i: the trig row under the grid, 0 swing, 1 Accent, 2 Slide
 		ColumnNumber,	// colnum i n: the number n over the i-th of the labelled columns, every fourth of the grid's
 						// half
 		// The Kit as MD Drums tells it (mdseqKit.h):
@@ -143,9 +157,16 @@ namespace mdseq
 		ChainText,		// chaintext text: the chain built or playing, empty without one
 		ChainStore,		// chainstore playing length patterns...: the chain, for its pattr Blob in the set
 		Update,			// update text: a newer release, empty for none (the external's)
-		Updates			// updates 0|1: whether the device looks for one (the external's)
+		Updates,		// updates 0|1: whether the device looks for one (the external's)
+		PushObserve,	// pushobs i id n: live.observer i watches object n, 0 for none (the external's)
+		Take,			// take text: the last take's length ("Take 12 bars"), "No take" before any (the external's)
+		TakeReady,		// takeready 0|1: whether a take can be captured (the external's)
+		Pages,			// pages p n: the strip's page shown, and its pages within the Pattern's length (the
+						// others off)
+		UpdateShown,	// updateshown 0|1: whether the strip shows a newer release's screen (the external's)
+		PrintSource		// printsource i: the Print menu's index, as Message::PrintSource takes it (the external's)
 	};
-	constexpr int PanelKeyCount = static_cast<int>(PanelKey::Updates) + 1;
+	constexpr int PanelKeyCount = static_cast<int>(PanelKey::PrintSource) + 1;
 
 	// How a Pattern's button looks: faint while the Pattern is empty, bright while it holds a Hit, lit while shown
 	// (played), outlined in the accent while queued, its own look on every other blink.

@@ -19,8 +19,12 @@ namespace
 {
 	using namespace mdseq;
 
-	// The swing row drawn whole with the default row: 32 backgrounds and a mark on every second step.
-	constexpr size_t SwingRowOps = 32 + 16;
+	// The swing row drawn whole with the default row: 32 backgrounds and a mark on every second step, the steps past
+	// the Pattern's length off and without one. At the default length of 16 in the first half; in a half all past the
+	// length; in a half within it.
+	constexpr size_t SwingRowOps = 32 + 8;
+	constexpr size_t SwingRowPastOps = 32;
+	constexpr size_t SwingRowFullOps = 32 + 16;
 
 	// The centre of a cell, where a click lands.
 	int stripX(const int _cell) { return strip::cellX(_cell) + strip::CellWidth / 2; }
@@ -86,8 +90,9 @@ namespace
 		CHECK(!out.strip.empty() && out.strip[0].kind == DrawOp::Kind::Clear);
 		CHECK(out.strip.size() == 1 + 16);
 		CHECK(!out.grid.empty() && out.grid[0].kind == DrawOp::Kind::Clear);
-		// The step selected, Track 1 step 1, has its frame of 2 px; then the swing row.
-		CHECK(out.grid.size() == 1 + 512 + 2 + SwingRowOps);
+		// The step selected, Track 1 step 1, has its frame of 2 px; then the trig row, the swing's at first, and the
+		// line after step 16.
+		CHECK(out.grid.size() == 1 + 512 + 2 + SwingRowOps + 1);
 		CHECK(hasPanel(out, text("tracktitle", "Track 01")));
 		CHECK(hasPanel(out, text("steptitle", "Step 1, page 1")));
 		CHECK(hasPanel(out, ints("velocity", {DefaultVelocity})));
@@ -102,8 +107,8 @@ namespace
 	}
 
 	// Everything the panel shows, in the order the patch receives it: the Tracks' names, the step selected with its
-	// Track's names for SYN1-8, the length, the half and its column numbers, the status line, then the Pattern chosen
-	// with the status line again.
+	// Track's names for SYN1-8, the length and the strip's pages, the half and its column numbers, the status line, then
+	// the Pattern chosen with the status line again.
 	void panelInOrder()
 	{
 		Editor e;
@@ -122,7 +127,7 @@ namespace
 			expected.push_back("lock");
 			expected.push_back("lockvalue");
 		}
-		for(const char* k : {"lengthindex", "scaleindex", "lengthtext", "swing", "half"})
+		for(const char* k : {"lengthindex", "scaleindex", "lengthtext", "pages", "swing", "accent", "trigrow", "half"})
 			expected.push_back(k);
 		for(int i = 0; i < 8; ++i)
 			expected.push_back("colnum");
@@ -177,7 +182,8 @@ namespace
 		CHECK(forwarded(e.stripClick(stripX(3), 10), Input::Kind::SetHit, 0, 3, 0));
 		e.stripMouse(false);
 
-		// The Track and page shown decide which step a cell is.
+		// The Track and page shown decide which step a cell is, in a Pattern long enough for the third page.
+		e.setLength(MaxSteps);
 		CHECK(e.showTrack(5).strip.size() == 1 + 16);
 		CHECK(e.showPage(2).strip.size() == 1 + 16);
 		e.stripMouse(true);
@@ -233,7 +239,7 @@ namespace
 		CHECK(forwarded(e.setHit(false), Input::Kind::SetHit, 3, 5, 0));
 
 		// The second half: columns are steps 33-64.
-		CHECK(e.showHalf(1).grid.size() == 1 + 512 + SwingRowOps);	// the step selected is not in it
+		CHECK(e.showHalf(1).grid.size() == 1 + 512 + SwingRowPastOps);	// the step selected is not in it
 		e.gridMouse(true);
 		CHECK(forwarded(e.gridClick(grid::cellX(16) + 1, gridY(0)), Input::Kind::SetHit, 0, 48, 1));
 		CHECK(e.gridClick(grid::cellX(16) - 1, gridY(0)).forward.empty());	// the gap between the pages
@@ -320,12 +326,43 @@ namespace
 		CHECK(hasPanel(*out, ints("lengthindex", {MaxSteps - 1})));
 		CHECK(hasPanel(*out, text("lengthtext", "64 steps, 1/16")));
 		CHECK(hasPanel(e.setLength(1), ints("lengthindex", {0})));
+
+		// A length drawn again whole: the steps past it off, the line after the last step in the gap after it.
+		out = &e.setLength(12);
+		CHECK(!out->strip.empty() && out->strip[0].kind == DrawOp::Kind::Clear);
+		CHECK(out->strip.size() == 1 + 16 + 1);
+		CHECK(out->strip[12].colour == colours::Panel && out->strip[13].colour == colours::Past);
+		DrawOp end{};
+		CHECK(strip::endLine(12, 0, end) && out->strip.back() == end);
+		CHECK(grid::endLine(12, 0, end) && !out->grid.empty() && out->grid.back() == end);
+	}
+
+	// The strip's pages: those past the length are off, the page shown stays within it, and the patch's four buttons
+	// hear the page and the count again after each click.
+	void pagesWithinTheLength()
+	{
+		Editor e;
+		CHECK(hasPanel(e.redrawAll(), ints("pages", {0, 1})));
+		const EditorOutput* out = &e.showPage(2);
+		CHECK(out->strip.empty() && lastPanel(*out, ints("pages", {0, 1})));
+		out = &e.setLength(40);
+		CHECK(lastPanel(*out, ints("pages", {0, 3})));
+		out = &e.showPage(2);
+		CHECK(!out->strip.empty() && lastPanel(*out, ints("pages", {2, 3})));
+		CHECK(e.showPage(2).strip.empty());
+		out = &e.setLength(20);
+		CHECK(lastPanel(*out, ints("pages", {1, 2})));
+		DrawOp end{};
+		CHECK(strip::endLine(20, 1, end) && out->strip.back() == end);	// on page 2, which holds the last step
+		// Another Pattern, of 16 steps: its first page.
+		CHECK(lastPanel(e.setPattern(3), ints("pages", {0, 1})));
 	}
 
 	void playedStep()
 	{
 		Editor e;
 		e.redrawAll();
+		e.setLength(MaxSteps);
 		const EditorOutput* out = &e.played(5);
 		CHECK(out->panel.size() == 1 && hasPanel(*out, text("status", "Playing step 6")));
 		// A column of 16 cells, background and frame, and its swing cell: step 6 swings, so its mark too.
@@ -342,8 +379,8 @@ namespace
 		out = &e.played(40);
 		CHECK(e.half() == 1);
 		CHECK(hasPanel(*out, ints("half", {1})));
-		// All redrawn, the column played framed, its swing cell too.
-		CHECK(out->grid.size() == 1 + 512 + 16 + SwingRowOps + 1);
+		// All redrawn, the column played framed, its swing cell too, and the line after step 64.
+		CHECK(out->grid.size() == 1 + 512 + 16 + SwingRowFullOps + 1 + 1);
 		CHECK(out->strip.size() == 1);	// step 7 back to plain; step 41 is on another page
 
 		e.setFollow(false);
@@ -492,7 +529,7 @@ namespace
 		CHECK(out->forward.size() == 1 && out->forward[0].kind == Input::Kind::SetCondition &&
 			out->forward[0].value == 22);
 		CHECK(lastPanel(*out, ints("condition", {22})));
-		CHECK(out->grid.size() == 2 + 2 + 2);	// background, Hit, strip and label, frame of 2 px
+		CHECK(out->grid.size() == 2 + 1 + 2);	// background, Hit, label, frame of 2 px
 		CHECK(lastPanel(e.redrawAll(), ints("condition", {22})));
 
 		// Taking the Hit off takes the Condition with it.
@@ -613,11 +650,11 @@ namespace
 		// Step 2 swings by default: a click takes it off, a drag over steps 3 and 4 takes them off too (step 3 did
 		// not swing: nothing to forward), the selection still Track 1's step 1.
 		e.gridMouse(true);
-		out = &e.gridClick(gridX(1), gridY(grid::SwingRow));
+		out = &e.gridClick(gridX(1), gridY(grid::TrigRow));
 		CHECK(forwarded(*out, Input::Kind::SetSwingStep, 0, 1, 0));
 		CHECK(out->grid.size() == 1 && out->panel.empty());	// the cell without its mark
-		CHECK(e.gridClick(gridX(2), gridY(grid::SwingRow)).forward.empty());
-		CHECK(forwarded(e.gridClick(gridX(3), gridY(grid::SwingRow)), Input::Kind::SetSwingStep, 0, 3, 0));
+		CHECK(e.gridClick(gridX(2), gridY(grid::TrigRow)).forward.empty());
+		CHECK(forwarded(e.gridClick(gridX(3), gridY(grid::TrigRow)), Input::Kind::SetSwingStep, 0, 3, 0));
 		e.gridMouse(false);
 		CHECK((e.pattern().swingSteps & 0xf) == 0);
 		CHECK(e.selectedTrack() == 0 && e.selectedStep() == 0);
@@ -625,17 +662,82 @@ namespace
 		// A new gesture on a step without swing puts it on, in the half shown.
 		e.showHalf(1);
 		e.gridMouse(true);
-		CHECK(forwarded(e.gridClick(gridX(2), gridY(grid::SwingRow)), Input::Kind::SetSwingStep, 0, 34, 1));
+		CHECK(forwarded(e.gridClick(gridX(2), gridY(grid::TrigRow)), Input::Kind::SetSwingStep, 0, 34, 1));
 		e.gridMouse(false);
 		CHECK((e.pattern().swingSteps >> 34 & 1) == 1);
 
 		// From elsewhere: the amount and a step, shown as from the window.
 		out = &e.apply({Input::Kind::SetSwing, 0, 0, 80});
-		CHECK(lastPanel(*out, ints("swing", {30})) && out->grid.size() == SwingRowOps + 1);	// step 35 swings now
+		// Steps 33-64 are past the length: the half's row is off, step 35's swing kept for when it grows.
+		CHECK(lastPanel(*out, ints("swing", {30})) && out->grid.size() == SwingRowPastOps);
 		out = &e.apply({Input::Kind::SetSwingStep, 0, 33, 0});
 		CHECK(out->grid.size() == 1 && out->forward.size() == 1);
 		out = &e.apply({Input::Kind::SetSwingStep, 0, 3, 1});	// in the other half: forwarded, nothing drawn
 		CHECK(out->grid.empty() && out->forward.size() == 1);
+	}
+
+	// The Accent (issue 26): its amount in the window, its row the trig row once the menu chooses it, which the strip
+	// marks.
+	void accentFromTheWindow()
+	{
+		Editor e;
+		e.redrawAll();
+		CHECK(e.showTrigRow(1).grid.size() == 32 && e.trigRow() == Editor::TrigRow::Accent);	// no step accented
+		const EditorOutput* out = &e.setAccent(40);
+		CHECK(forwarded(*out, Input::Kind::SetAccent, 0, 0, 40));
+		CHECK(lastPanel(*out, ints("accent", {40})) && out->grid.empty());	// the row shows the steps, not the amount
+		CHECK(e.setAccent(40).forward.empty());
+		CHECK(e.pattern().accent == 40);
+
+		// A click puts step 2 in the row, a drag over steps 3 and 4 too, the selection still Track 1's step 1; the
+		// strip, on page 1, marks each.
+		e.gridMouse(true);
+		out = &e.gridClick(gridX(1), gridY(grid::TrigRow));
+		CHECK(forwarded(*out, Input::Kind::SetAccentStep, 0, 1, 1));
+		CHECK(out->grid.size() == 2 && out->strip.size() == 2 && out->panel.empty());	// the cell and its mark
+		CHECK(forwarded(e.gridClick(gridX(2), gridY(grid::TrigRow)), Input::Kind::SetAccentStep, 0, 2, 1));
+		CHECK(forwarded(e.gridClick(gridX(3), gridY(grid::TrigRow)), Input::Kind::SetAccentStep, 0, 3, 1));
+		e.gridMouse(false);
+		CHECK((e.pattern().accentSteps & 0xf) == 0xe);
+		CHECK(e.selectedTrack() == 0 && e.selectedStep() == 0);
+		// A new gesture on an accented step takes it off.
+		e.gridMouse(true);
+		CHECK(forwarded(e.gridClick(gridX(2), gridY(grid::TrigRow)), Input::Kind::SetAccentStep, 0, 2, 0));
+		e.gridMouse(false);
+		CHECK((e.pattern().accentSteps & 0xf) == 0xa);
+
+		// From elsewhere: the amount and a step, shown as from the window.
+		out = &e.apply({Input::Kind::SetAccent, 0, 0, 127});
+		CHECK(lastPanel(*out, ints("accent", {127})) && out->forward.size() == 1);
+		out = &e.apply({Input::Kind::SetAccentStep, 0, 40, 1});	// in the other half and page: forwarded, nothing drawn
+		CHECK(out->grid.empty() && out->strip.empty() && out->forward.size() == 1);
+	}
+
+	// The trig row's menu (issue 26): the swing row at first, then the Accent or the Slide row, each drawn whole in
+	// its colour; a click edits the row shown, an edit of another row from elsewhere draws nothing in the grid.
+	void trigRowMenu()
+	{
+		Editor e;
+		CHECK(lastPanel(e.redrawAll(), ints("trigrow", {0})));
+		const EditorOutput* out = &e.showTrigRow(2);
+		CHECK(e.trigRow() == Editor::TrigRow::Slide && lastPanel(*out, ints("trigrow", {2})));
+		CHECK(out->grid.size() == 32 && out->forward.empty());	// the Slide row, empty
+		CHECK(e.showTrigRow(9).panel.size() == 1 && e.trigRow() == Editor::TrigRow::Slide);	// past the last: the last
+		e.gridMouse(true);
+		out = &e.gridClick(gridX(4), gridY(grid::TrigRow));
+		CHECK(forwarded(*out, Input::Kind::SetSlideStep, 0, 4, 1));
+		CHECK(out->grid.size() == 2 && out->grid[1].colour == colours::Sliding && out->strip.empty());
+		e.gridMouse(false);
+		CHECK(e.pattern().inSlideRow(4));
+		// The swing row from elsewhere while the Slide row shows: forwarded, nothing drawn; the Accent's step, the strip
+		// marks.
+		out = &e.apply({Input::Kind::SetSwingStep, 0, 2, 1});
+		CHECK(out->grid.empty() && out->forward.size() == 1);
+		out = &e.apply({Input::Kind::SetAccentStep, 0, 2, 1});
+		CHECK(out->grid.empty() && out->strip.size() == 2);
+		// Back to the swing row: drawn whole again, step 3 swinging now.
+		out = &e.showTrigRow(0);
+		CHECK(out->grid.size() == SwingRowOps + 1 && e.pattern().inSwingRow(2));
 	}
 
 	void patterns()
@@ -644,7 +746,7 @@ namespace
 		Editor e;
 		const EditorOutput* out = &e.setPattern(3);
 		CHECK(forwarded(*out, Input::Kind::SetPattern, 0, 0, 3));
-		CHECK(e.shown() == 3 && out->grid.size() == 1 + 512 + 2 + SwingRowOps);
+		CHECK(e.shown() == 3 && out->grid.size() == 1 + 512 + 2 + SwingRowOps + 1);
 		CHECK(lastPanel(*out, ints("patternindex", {3})));
 
 		// Its edits name it.
@@ -687,7 +789,7 @@ namespace
 		const EditorOutput& out = e.load(0, p);
 		CHECK(out.forward.empty());	// the external hands the Sequencer the same Pattern
 		// Every cell, the selected frame, the Hit loaded.
-		CHECK(out.strip.size() == 1 + 16 && out.grid.size() == 1 + 512 + 2 + 1 + SwingRowOps);
+		CHECK(out.strip.size() == 1 + 16 && out.grid.size() == 1 + 512 + 2 + 1 + SwingRowFullOps + 1);
 		CHECK(hasPanel(out, ints("lengthindex", {31})) && hasPanel(out, text("lengthtext", "32 steps, 1/16")));
 		CHECK(e.pattern().steps[4][3].hit && e.pattern().length == 32);
 	}
@@ -747,6 +849,7 @@ namespace
 		CHECK(!out->strip.empty() && out->strip[0].kind == DrawOp::Kind::Clear);
 		CHECK(!out->grid.empty() && out->grid[0].kind == DrawOp::Kind::Clear);
 		CHECK(lastPanel(*out, ints("lengthindex", {31})) && lastText(*out, "lengthtext") == "32 steps, 1/16");
+		CHECK(lastPanel(*out, ints("pages", {0, 2})));	// steps 17-32 within the length: their page key on
 
 		// From 40 steps: 64, steps 41-64 being steps 1-24. At 64, nothing left to double into.
 		e.setLength(40);
@@ -765,9 +868,27 @@ namespace
 		return chosen;
 	}
 
-	// A chain: built in Chain mode, a Pattern clicked appended; played once the mode is off, each Pattern for one Pass,
-	// the next queued as each Pass begins (none for the same Pattern again), round and round; ended by a Pattern chosen
-	// by hand.
+	// The chain as the Editor forwards it: its Patterns, then how many play.
+	bool chainForwarded(const EditorOutput& _out, const std::vector<int>& _patterns, const int _plays)
+	{
+		std::vector<Input> expected;
+		for(size_t i = 0; i < _patterns.size(); ++i)
+			expected.push_back({Input::Kind::ChainEntry, 0, static_cast<int>(i), _patterns[i]});
+		expected.push_back({Input::Kind::SetChain, 0, 0, _plays});
+		if(_out.forward.size() < expected.size())
+			return false;
+		const size_t from = _out.forward.size() - expected.size();
+		for(size_t i = 0; i < expected.size(); ++i)
+		{
+			const Input& in = _out.forward[from + i];
+			if(in.kind != expected[i].kind || in.step != expected[i].step || in.value != expected[i].value)
+				return false;
+		}
+		return true;
+	}
+
+	// A chain: built in Chain mode, a Pattern clicked appended; once the mode is off, forwarded to the Sequencer,
+	// which plays each Pattern for one Pass, round and round, and reports its place; ended by a Pattern chosen by hand.
 	void chains()
 	{
 		Editor e;
@@ -783,35 +904,34 @@ namespace
 		// Stopped: the chain starts on its first Pattern, shown already here.
 		out = e.setChainMode(false);
 		CHECK(lastPanel(out, ints("chainmode", {0})) && lastText(out, "chaintext") == "Chain 1/4: 01 03 03 05");
+		CHECK(choice(out) == -1 && chainForwarded(out, {0, 2, 2, 4}, 4));
 
-		// Playing: its first Pass queues the second Pattern.
-		CHECK(choice(e.played(0)) == 2);
-		e.played(15);
-		e.follow(2, -1);	// the switch at the end of the Pass
-		out = e.played(0);
-		CHECK(choice(out) == -1 && lastText(out, "chaintext") == "Chain 2/4: 01 03 03 05");	// 03 again: nothing to queue
-		e.played(15);
-		out = e.played(0);
-		CHECK(choice(out) == 4 && lastText(out, "chaintext") == "Chain 3/4: 01 03 03 05");
-		e.played(15);
-		e.follow(4, -1);
-		CHECK(choice(e.played(0)) == 0);	// round again
-		e.played(15);
-		e.follow(0, -1);
-		out = e.played(0);
-		CHECK(choice(out) == 2 && lastText(out, "chaintext") == "Chain 1/4: 01 03 03 05");
+		// Playing: the place the Sequencer reports, with the Pattern it plays.
+		e.played(0);
+		CHECK(lastText(e.follow(0, 2, 0), "chaintext").empty());	// the Pattern queued, no new place
+		out = e.follow(2, -1, 1);
+		CHECK(lastText(out, "chaintext") == "Chain 2/4: 01 03 03 05");
+		CHECK(lastText(e.follow(2, 4, 2), "chaintext") == "Chain 3/4: 01 03 03 05");
 
-		// A Pattern chosen by hand ends the chain.
+		// A Pattern chosen by hand ends the chain, in the Sequencer too.
 		out = e.setPattern(7);
-		CHECK(choice(out) == 7 && lastText(out, "chaintext").empty());
-		e.played(15);
-		e.follow(7, -1);
-		CHECK(choice(e.played(0)) == -1);
+		CHECK(choice(out) == 7 && out.forward.size() == 1 && lastText(out, "chaintext").empty());
+		CHECK(lastText(e.follow(2, 7, 3), "chaintext").empty());	// a place reported late shows nothing
+
+		// A new chain ends the one playing: the Pattern it queued still follows.
+		e.setChainMode(true);
+		e.chainAdd(1);
+		e.chainAdd(3);
+		e.setChainMode(false);
+		out = e.setChainMode(true);
+		CHECK(forwarded(out, Input::Kind::SetChain, 0, 0, 0));
+		CHECK(e.setChainMode(false).forward.empty());
 
 		// One Pattern in Chain mode is a choice like another; none chooses nothing.
 		e.setChainMode(true);
 		e.chainAdd(9);
-		CHECK(choice(e.setChainMode(false)) == 9);
+		out = e.setChainMode(false);
+		CHECK(choice(out) == 9 && out.forward.size() == 1);
 		e.setChainMode(true);
 		CHECK(e.setChainMode(false).forward.empty());
 
@@ -823,9 +943,27 @@ namespace
 		CHECK(lastText(e.redrawAll(), "chaintext") == "Chain: 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16");
 	}
 
+	// The edit window closed: its grid is not drawn, neither by the step played nor by an edit, the strip still is;
+	// shown again, the grid is drawn whole, once.
+	void gridOnlyWhileTheWindowShows()
+	{
+		Editor e;
+		CHECK(e.setWindow(true).grid.empty());	// shown already
+		const EditorOutput& closed = e.setWindow(false);
+		CHECK(closed.grid.empty() && closed.strip.empty());
+		e.played(0);
+		const EditorOutput& played = e.played(1);
+		CHECK(played.grid.empty() && !played.strip.empty());
+		CHECK(e.apply({Input::Kind::SetHit, 2, 5, 1}).grid.empty());
+		CHECK(e.redrawAll().grid.empty());
+		const EditorOutput& shown = e.setWindow(true);
+		CHECK(!shown.grid.empty() && shown.grid.front().kind == DrawOp::Kind::Clear);
+		CHECK(e.setWindow(true).grid.empty());
+	}
+
 	// The chain is kept in the set: "chainstore playing length patterns..." each time it starts or ends, for its pattr
-	// Blob; what the Blob gives back when the set opens restores it, playing or not. Words this build cannot read
-	// restore nothing.
+	// Blob; what the Blob gives back when the set opens restores it, playing or not, and forwards it. Words this build
+	// cannot read restore nothing.
 	void chainKeptInTheSet()
 	{
 		Editor e;
@@ -839,10 +977,10 @@ namespace
 
 		Editor opened;
 		out = opened.restoreChain({1, 3, 5, 6, 7});
-		CHECK(lastText(out, "chaintext") == "Chain -/3: 06 07 08" && out.forward.empty());
-		CHECK(choice(opened.played(0)) == 5);	// Live plays: its first Pattern queued
+		CHECK(lastText(out, "chaintext") == "Chain -/3: 06 07 08" && chainForwarded(out, {5, 6, 7}, 3));
 		CHECK(opened.restoreChain({1, 3, 5, 6, 7}).panel.empty());	// the same: nothing
-		CHECK(lastText(opened.restoreChain({0, 2, 1, 2}), "chaintext").empty());	// kept, not playing
+		out = opened.restoreChain({0, 2, 1, 2});
+		CHECK(lastText(out, "chaintext").empty() && chainForwarded(out, {1, 2}, 0));	// kept, not playing
 		CHECK(opened.restoreChain({0}).panel.empty());	// the Blob's initial value: no chain
 		for(const std::vector<int>& bad : std::vector<std::vector<int>>{{1, 2, 1}, {1, 17}, {1, 2, 1, 16}, {2, 2, 1, 2}})
 			CHECK(opened.restoreChain(bad).panel.empty());
@@ -1090,6 +1228,31 @@ namespace
 		CHECK(lastText(out, "tracktitle") == "Track 06" && hasPanel(out, named("lockname", 5, "SYN6")));
 	}
 
+	// A user's bank (seen in Live on 2026-10-20): MoDule's User Machines, from id 194, named as their packages name
+	// them, and a ROM Machine named after the user's Sample it plays. Each name as long as its box holds: the tab cut
+	// where Live would cut a letter in two, the row, the title and a SYN name with an ellipsis where Live broke the line.
+	void userBankNames()
+	{
+		Kit kit;
+		kit.tracks[0].machine = 176;
+		kit.tracks[0].machineName = "gretsch_tom_06";
+		kit.tracks[0].synNames = {"PTCH", "DEC", "HOLD", "BRR", "STRT", "END", "RTRG", "REVERBSIZE2"};
+		kit.tracks[1].machine = 194;
+		kit.tracks[1].machineName = "NFX-D2";
+		kit.tracks[1].synNames = {"DRV", "TONE", "LVL", "OUT", "BRR", "MIX", "-", "-"};
+		Editor e;
+		e.redrawAll();
+		const EditorOutput out = e.setKit(kit);
+		std::vector<std::string> labels = numbers();
+		labels[0] = "01 gret";
+		labels[1] = "02 D2";
+		CHECK(hasPanel(out, tabs(labels)));
+		CHECK(hasPanel(out, named("trackname", 0, "gretsch_tom\xE2\x80\xA6")));
+		CHECK(hasPanel(out, named("trackname", 1, "NFX-D2")));
+		CHECK(lastText(out, "tracktitle") == "Track 01 gretsch_tom\xE2\x80\xA6");
+		CHECK(hasPanel(out, named("lockname", 7, "REVERBSIZ\xE2\x80\xA6")));
+	}
+
 	// The Kit's values on the Lock dials: a dial without a Lock sits unlit on the Kit's value, which its text gives, so
 	// that turning it starts the Lock from there; while MD Drums tells no value, on its middle, the Kit's position.
 	void kitValuesOnLocks()
@@ -1152,6 +1315,7 @@ int main()
 	redrawAll();
 	panelInOrder();
 	kitNames();
+	userBankNames();
 	kitValuesOnLocks();
 	stripClicksAndDrags();
 	oneClickAsTheLcdSendsIt();
@@ -1159,6 +1323,7 @@ int main()
 	gridSelectsWithoutTakingOff();
 	selectionTitles();
 	mutesAndLength();
+	pagesWithinTheLength();
 	playedStep();
 	columnNumbers();
 	statusLine();
@@ -1172,11 +1337,14 @@ int main()
 	doublesThePattern();
 	clearsThePattern();
 	chains();
+	gridOnlyWhileTheWindowShows();
 	chainKeptInTheSet();
 	patternStates();
 	fillEdit();
 	scaleFromTheWindow();
 	swingFromTheWindow();
+	accentFromTheWindow();
+	trigRowMenu();
 	patterns();
 	forwardedEditsKeepTheSequencerEqual();
 	return mdseqTest::finish("mdseqEditorTest");

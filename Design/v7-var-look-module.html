@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v7, quatre allures</title>
+<link rel="stylesheet" href="v7-ui.css">
+<link rel="stylesheet" href="v7-var-look-overbridge.css">
+<link rel="stylesheet" href="v7-var-look-module.css">
+<link rel="stylesheet" href="v7-var-look-live-module.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v7, quatre allures</h1>
+	<p class="note">La même disposition (v7) sous quatre allures. <b>Live, accent MoDule</b> : la v7 native, avec les gris,
+		le contraste et la police de Live (Ableton Sans) et l'orange des Hits, mais le turquoise de MoDule (#6fd1c4) à la
+		place du bleu, pour la sélection, le pas joué, les Locks, les modes et les écrans. <b>MoDule sombre</b> : les fonds,
+		l'encre, le turquoise, le corail des Mutes et la police Inter du skin de MoDule (Max ne voit que les polices
+		installées, et Inter ne l'est pas). <b>Overbridge</b> : l'allure des machines Elektron. <b>v7</b> : Live tel quel,
+		avec son bleu.</p>
+
+	<div class="switch" id="look">
+		<button class="on" data-look="lm">Live, accent MoDule</button>
+		<button data-look="md">MoDule sombre</button>
+		<button data-look="ob">Allure Overbridge</button>
+		<button data-look="v7">Allure v7 (Live)</button>
+	</div>
+
+	<div id="lm" class="roles">
+		<h2>Bande</h2>
+		<div class="fam-live md-accent" id="lm-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-live md-accent" id="lm-window"></div>
+	</div>
+	<div id="md" hidden>
+		<h2>Bande</h2>
+		<div class="fam-md" id="md-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-md" id="md-window"></div>
+	</div>
+	<div id="ob" hidden>
+		<h2>Bande</h2>
+		<div class="fam-ob" id="ob-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-ob" id="ob-window"></div>
+	</div>
+	<div id="v7" class="roles" hidden>
+		<h2>Bande</h2>
+		<div class="fam-live" id="v7-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-live" id="v7-window"></div>
+	</div>
+</div>
+<script src="v7-ui.js"></script>
+<script src="v7-var-look-overbridge.js"></script>
+<script src="v7-var-look-module.js"></script>
+<script src="v7-var-look-live-module.js"></script>
+<script>
+	// Canvases take a font once it has loaded
+	Promise.all([document.fonts.load("600 10px Inter"), document.fonts.load("500 10px Inter"),
+		document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMockLm.strip(document.getElementById("lm-strip"));
+			mdSeqMockLm.editWindow(document.getElementById("lm-window"));
+			mdSeqMockMd.strip(document.getElementById("md-strip"));
+			mdSeqMockMd.editWindow(document.getElementById("md-window"));
+			mdSeqMockOb.strip(document.getElementById("ob-strip"));
+			mdSeqMockOb.editWindow(document.getElementById("ob-window"));
+			mdSeqMock7.strip(document.getElementById("v7-strip"));
+			mdSeqMock7.editWindow(document.getElementById("v7-window"));
+		});
+	document.querySelectorAll("#look button").forEach(b => b.addEventListener("click", () => {
+		document.querySelectorAll("#look button").forEach(x => x.classList.toggle("on", x === b));
+		["lm", "md", "ob", "v7"].forEach(id => { document.getElementById(id).hidden = b.dataset.look !== id; });
+	}));
+</script>
+</body>
+</html>

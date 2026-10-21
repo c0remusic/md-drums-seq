@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>md-drums-seq v6</title>
+<link rel="stylesheet" href="v6-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>md-drums-seq v6</h1>
+	<p class="note">La v5 approuvée, plus tout ce qui est venu après (Chain, Accent, Slide, rangée des trigs, Push, Capture,
+		Device / Clips), regroupé selon l'usage. Mêmes objets Max natifs que la v5 : lcd et live.*, sans JavaScript dans le
+		device.</p>
+
+	<h2>Ce qui change</h2>
+	<ul class="changes">
+		<li><b>Bande, colonne de droite en trois groupes.</b> Play : FILL et Chain, de même taille, la chaîne dessous.
+			Output : « Clips only » et « Capture 12 bars », la longueur de la prise sur le bouton. Device : Edit et Push.</li>
+		<li><b>Un seul Print.</b> Dans la fenêtre, un menu choisit la source (« Pattern ×1 » à « ×16 », « Last take
+			(12 bars) »), un bouton imprime. Le menu ne déclenche plus rien seul. La case morte « Session » disparaît.</li>
+		<li><b>Barre du haut en groupes</b>, séparés par un filet : Pattern (Copy to, Length, ×2, Scale), vue (moitiés,
+			Follow), FILL, Print.</li>
+		<li><b>« Check for updates » quitte le panneau du pas</b> pour un pied de fenêtre, avec la ligne d'état de Print,
+			en gris : c'est un réglage du device, pas une propriété du pas.</li>
+		<li><b>Longueur visible.</b> Les pas au-delà de la longueur sont estompés dans la grille, un trait marque la fin du
+			Pattern, et les pages hors longueur de la bande sont éteintes et inertes. Ici, longueur 48.</li>
+		<li><b>Couleurs par rôle.</b> L'orange reste au contenu : Hits, Pattern, Track et page choisis. Le bleu, déjà
+			celui de la sélection et du pas joué, passe aux modes qui changent ce que font les mains : Follow, Chain, Clips
+			only, Push, Fill edit. Les réglages du device restent gris.</li>
+	</ul>
+
+	<div class="switch" id="scheme">
+		<button class="on" data-roles="1">Couleurs v6 : par rôle</button>
+		<button data-roles="0">Couleurs v5 : tout en orange</button>
+	</div>
+
+	<div class="roles" id="mock">
+		<h2>Bande, après</h2>
+		<div class="fam-live" id="strip"></div>
+		<h2>Fenêtre d'édition, après</h2>
+		<div class="fam-live" id="window"></div>
+	</div>
+
+	<h2>Le menu de Print, ouvert</h2>
+	<div class="menu-open">
+		<div>Pattern ×1</div>
+		<div>Pattern ×2</div>
+		<div class="sel">Pattern ×4</div>
+		<div>…</div>
+		<div>Pattern ×16</div>
+		<div class="sep">Last take (12 bars)</div>
+	</div>
+
+	<h2>Avant : la bande et la fenêtre dans Live, le 2026-10-20</h2>
+	<div class="compare">
+		<figure><img src="v6-before-strip.png" alt="La bande dans Live"><figcaption>Bande actuelle</figcaption></figure>
+		<figure><img src="v6-before-edit.png" alt="La fenêtre d'édition dans Live"><figcaption>Fenêtre actuelle</figcaption></figure>
+	</div>
+</div>
+<script src="v6-ui.js"></script>
+<script>
+	mdSeqMock6.strip(document.getElementById("strip"));
+	mdSeqMock6.editWindow(document.getElementById("window"));
+	document.querySelectorAll("#scheme button").forEach(b => b.addEventListener("click", () => {
+		document.querySelectorAll("#scheme button").forEach(x => x.classList.toggle("on", x === b));
+		document.getElementById("mock").classList.toggle("roles", b.dataset.roles === "1");
+	}));
+</script>
+</body>
+</html>

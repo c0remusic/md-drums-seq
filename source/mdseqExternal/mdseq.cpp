@@ -15,9 +15,9 @@
 // Inlet: the messages of mdseqProtocol.h, registered from its table. The Editor's go to mdseq::toEditor; the
 // external's own are handled here: restore p words... (Pattern p as its pattr Blob keeps it: mdseq::PatternStore tells
 // an echo of a write from a Pattern to load, and words this build cannot read, which load as an empty Pattern and
-// are told in the Max console), passes n and print (the Pattern shown into Session clips, n Passes of it
-// from the last start's seed, through mdseq::Printer, whose second step a clock and a qelem call back on the main
-// thread), lomid and lomreply (live.path's and live.object's answers to the lom message being sent, which arrive
+// are told in the Max console), printsource i and print (the Pattern shown into Session clips, i + 1 Passes of it
+// from the last start's seed, or the last take as capture does, through mdseq::Printer, whose second step a clock and
+// a qelem call back on the main thread), lomid and lomreply (live.path's and live.object's answers to the lom message being sent, which arrive
 // before it returns).
 // Outlets, left to right: MIDI bytes; strip lcd; grid lcd; panel. The panel outlet sends the panel keys of
 // mdseqProtocol.h: the Editor's values, as it words them; printstatus text, what a print did; lom path|id|obj ..., a
@@ -38,14 +38,18 @@
 #include "ext_itm.h"
 #include "ext_time.h"
 
+#include "mdseqCapture.h"
 #include "mdseqEdit.h"
 #include "mdseqEditor.h"
 #include "mdseqKit.h"
 #include "mdseqPrinter.h"
 #include "mdseqProtocol.h"
+#include "mdseqPush.h"
 #include "mdseqSequencer.h"
 #include "mdseqStore.h"
+#include "mdseqText.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdarg>
@@ -75,6 +79,36 @@ namespace
 	constexpr double StoreDelayMs = 500.0;
 
 	class LomSet;
+
+	// Push 2 (issue 33): taken while the strip's switch is on, the device on and its track the one Live has selected,
+	// as Tuple takes it; the controls taken, by their ids, to give back. Main thread.
+	struct PushLink
+	{
+		bool wanted = false;	// the strip's switch
+		bool deviceOn = true;
+		long selectedTrack = 0;	// the track Live has selected
+		long ownTrack = 0;		// the device's, 0 until known
+		bool taken = false;
+		long surface = 0;		// the control surface taken from
+		long matrix = 0;
+		std::array<long, mdseq::push::ButtonCount> buttons{};
+		std::array<long, mdseq::push::EncoderCount> encoders{};
+		int relights = 0;		// the lights to send again, a moment apart, after taking Push
+
+		// What the patch reports is handled later, from pushQelem: these messages come from Live's notifications, where
+		// Live refuses a change, and a LOM call made there would move live.object under a print's.
+		struct Value
+		{
+			int observer;
+			std::array<long, 3> v;
+			size_t count;
+			double ms;		// when it came
+		};
+		std::vector<Value> values;
+		bool reconcile = false;		// the switch, the device's state or the track selected changed
+		bool refresh = false;		// something else changed what Push shows
+		std::atomic<bool> relightDue{false};	// pushClock's, on the scheduler thread
+	};
 
 	// A newer release, which a thread of its own asks GitHub for (updates.h) and hands the main thread through a qelem
 	// that the device may free first: the thread sets it under the lock, and only while the device lives.
@@ -107,9 +141,13 @@ namespace
 		// constructs nothing: create constructs them in place, destroy destroys them.
 		std::atomic<uint32_t> playhead;		// mdseq::packPlayhead of the last wake, which the played qelem shows
 		std::atomic<uint64_t> startSeed;	// the last transport start's, 0 before any
-		long printPasses;				// the Passes asked for a print, which the Printer keeps to 1-16
+		long printSource;				// the Print menu's index: i + 1 Passes below MaxPasses, the last take at it
 		LomSet* lomSet;					// the set as printing reaches it, main thread only
 		mdseq::Printer* printer;		// main thread only
+		mdseq::Journal* journal;		// the notes played, written on the scheduler thread, read on the main
+										// (issue 23)
+		std::atomic<bool> toClips;		// the strip's Clips only: on, no note-on leaves the device
+		std::string* takeShown;			// main thread: the strip's take text last sent
 		t_clock* printClock;			// a print's second step, soon: fires on the scheduler thread
 		t_qelem* printQelem;			// and runs it on the main thread
 		mdseq::KitLink* kitLink;		// main thread: the hello's id, and the Kit MD Drums tells (ADR 0003)
@@ -120,12 +158,17 @@ namespace
 		t_qelem* kitQelem;				// and the file read on the main thread
 		std::shared_ptr<UpdateLine>* update;	// main thread; shared with the thread that looks for a release
 		bool updatesEnabled;			// main thread: the settings' "updates on|off" as the window's switch shows it
+		mdseq::PushMode* push;			// main thread: Push 2 as the device's (issue 33)
+		PushLink* pushLink;				// main thread: whether to take Push, and the controls taken
+		t_clock* pushClock;				// a moment after taking Push, its lights again (on the scheduler thread)
+		t_qelem* pushQelem;				// pushWork: Push's messages, the relights and the refreshes, on the main thread
 
 		// Diagnostics, written on the scheduler thread and logged from the main thread (see logState)
 		long heartbeats;
 		long timerWakes;
 		long eventsSent;
 		long editsApplied;
+
 		bool lastLoggedPlaying;
 		long kitTicks;					// the Kit clock's ticks
 		double lastKitPollMs;			// main thread: the Kit poll's last run, and the ticks then
@@ -240,12 +283,27 @@ namespace
 		const mdseq::Wake wake = _x->sequencer->wake(look);
 		// Relaxed, here and for the Playhead: each word holds all it says, and publishes nothing else.
 		_x->startSeed.store(_x->sequencer->startSeed(), std::memory_order_relaxed);
+		// Every note played goes into the take; on Clips, the note-ons stay in the device, its note-offs leave it so
+		// that Live holds no note (issue 24).
+		mdseq::Journal& journal = *_x->journal;
+		if(wake.started)
+			journal.start(look.ticks);
+		if(wake.jumped)
+			journal.jump(wake.jumpedFrom, look.ticks);
+		const bool toClips = _x->toClips.load(std::memory_order_relaxed);
 		for(const mdseq::MidiEvent* e = wake.begin; e != wake.end; ++e)
 		{
+			journal.note(e->tick, {e->bytes[0], e->bytes[1], e->bytes[2]});
+			if(toClips && mdseq::isNoteOn(e->bytes[0], e->bytes[2]))
+				continue;
 			outlet_int(_x->midiOutlet, e->bytes[0]);
 			outlet_int(_x->midiOutlet, e->bytes[1]);
 			outlet_int(_x->midiOutlet, e->bytes[2]);
 		}
+		if(look.playing)
+			journal.played(look.ticks);
+		if(wake.stopped)
+			journal.stop(look.ticks);
 
 #ifdef MDSEQ_DEV
 		_x->eventsSent += static_cast<long>(wake.end - wake.begin);
@@ -406,7 +464,16 @@ namespace
 		{
 			if(op.kind == mdseq::DrawOp::Kind::Clear)
 			{
+				// Every drawing starts with a clear (the Editor's redrawStrip and redrawGrid): the lcd's font is set
+				// there once, for the labels until the next. The font is a bold face already: a bold textface would
+				// embolden it once more.
+				t_atom a[2];
 				outlet_anything(_outlet, sym("clear"), 0, nullptr);
+				atom_setsym(a, sym(mdseq::fontName(mdseq::Face::Bold)));
+				atom_setlong(a + 1, mdseq::LcdFontSize);
+				outlet_anything(_outlet, sym("font"), 2, a);
+				atom_setsym(a, sym("normal"));
+				outlet_anything(_outlet, sym("textface"), 1, a);
 				continue;
 			}
 			if(op.kind == mdseq::DrawOp::Kind::Text)
@@ -417,11 +484,6 @@ namespace
 				atom_setlong(a + 1, op.colour.g);
 				atom_setlong(a + 2, op.colour.b);
 				outlet_anything(_outlet, sym("frgb"), 3, a);
-				atom_setsym(a, sym("Arial"));
-				atom_setlong(a + 1, 10);
-				outlet_anything(_outlet, sym("font"), 2, a);
-				atom_setsym(a, sym("bold"));
-				outlet_anything(_outlet, sym("textface"), 1, a);
 				atom_setlong(a, op.left);
 				atom_setlong(a + 1, op.top);
 				outlet_anything(_outlet, sym("moveto"), 2, a);
@@ -454,9 +516,7 @@ namespace
 			atom_setlong(a + 4, op.colour.r);
 			atom_setlong(a + 5, op.colour.g);
 			atom_setlong(a + 6, op.colour.b);
-			const char* selector = op.kind == mdseq::DrawOp::Kind::PaintRect ? "paintrect"
-				: op.kind == mdseq::DrawOp::Kind::FrameRect ? "framerect"
-				: "paintoval";
+			const char* selector = op.kind == mdseq::DrawOp::Kind::PaintRect ? "paintrect" : "framerect";
 			outlet_anything(_outlet, sym(selector), 7, a);
 		}
 	}
@@ -593,21 +653,37 @@ namespace
 		// rack, its parent is a chain), and the selected scene.
 		mdseq::SetView read() override
 		{
+			return readSet(nullptr);
+		}
+
+		mdseq::SetView readTracks(const std::vector<int>& _indices) override
+		{
+			return readSet(&_indices);
+		}
+
+		// Every track, or only those at _only's indices (the others keep their place, empty; no scene is read).
+		mdseq::SetView readSet(const std::vector<int>* _only)
+		{
 			mdseq::SetView set;
 			const long deviceTrack = lomId(lomText(m_x, "path this_device canonical_parent"));
 			lomText(m_x, "path live_set");
 			const std::vector<long> tracks = lomIds(lomValue(m_x, "obj get tracks"));
-			const std::vector<long> scenes = lomIds(lomValue(m_x, "obj get scenes"));
-			const long selected = lomId(lomText(m_x, "path live_set view selected_scene"));
-			for(size_t s = 0; s < scenes.size(); ++s)
-				if(scenes[s] == selected)
-					set.selectedScene = static_cast<int>(s);
+			if(!_only)
+			{
+				const std::vector<long> scenes = lomIds(lomValue(m_x, "obj get scenes"));
+				const long selected = lomId(lomText(m_x, "path live_set view selected_scene"));
+				for(size_t s = 0; s < scenes.size(); ++s)
+					if(scenes[s] == selected)
+						set.selectedScene = static_cast<int>(s);
+			}
 			for(size_t i = 0; i < tracks.size(); ++i)
 			{
 				if(tracks[i] == deviceTrack)
 					set.deviceTrack = static_cast<int>(i);
+				mdseq::SetTrack& t = set.tracks.emplace_back();
+				if(_only && std::find(_only->begin(), _only->end(), static_cast<int>(i)) == _only->end())
+					continue;
 				lomText(m_x, "id " + std::to_string(tracks[i]));
-				mdseq::SetTrack t;
 				t.name = valueText(lomValue(m_x, "obj get name"));
 				const std::vector<t_atom> midi = lomValue(m_x, "obj get has_midi_input");
 				t.midi = !midi.empty() && atom_getlong(&midi[0]) != 0;
@@ -616,7 +692,6 @@ namespace
 					t.outputType = routingName("output_routing_type");
 					t.outputChannel = routingName("output_routing_channel");
 				}
-				set.tracks.push_back(t);
 			}
 			return set;
 		}
@@ -665,7 +740,7 @@ namespace
 		}
 
 		bool createClip(const int _index, const int _scene, const double _length, const std::string& _name,
-			const std::vector<mdseq::PrintedNote>& _notes) override
+			const std::vector<mdseq::PrintedNote>& _notes, const bool _loop) override
 		{
 			const std::string path = slotPath(_index, _scene);
 			lomText(m_x, path);
@@ -673,6 +748,8 @@ namespace
 				return false;
 			lomText(m_x, path + " clip");
 			setText("name", _name);
+			if(!_loop)
+				lomText(m_x, "obj set looping 0");
 			withDictionary("call", "add_new_notes", mdseq::notesJson(_notes));
 			return true;
 		}
@@ -798,7 +875,8 @@ namespace
 		{
 			seed = randomSeed();
 		}
-		printReport(_x, _x->printer->print(e.pattern(), e.shown(), static_cast<int>(_x->printPasses), seed, e.fill()));
+		printReport(_x, _x->printer->print(e.pattern(), e.shown(), static_cast<int>(_x->printSource) + 1, seed,
+			e.fill()));
 	}
 
 	void printSoon(MdSeq* _x)
@@ -823,6 +901,32 @@ namespace
 		outlet_anything(_x->panelOutlet, sym(_v.key.c_str()), static_cast<short>(a.size()), a.data());
 	}
 
+	// ---- Capture (issue 23): the last take into Session clips ----
+
+	// The strip's take text and its Capture button, when they change, or again (_again) once the device has loaded.
+	void takePanel(MdSeq* _x, const bool _again)
+	{
+		const bool notes = _x->journal->hasNotes();
+		const std::string text = mdseq::takeText(notes, _x->journal->length());
+		if(!_again && text == *_x->takeShown)
+			return;
+		*_x->takeShown = text;
+		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::Take), {}, {text}});
+		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::TakeReady), {notes ? 1 : 0}, {}});
+	}
+
+	// The last take, from the last start to the stop or to now, into a Session clip per Track named "Take n", placed
+	// as a print's and resumed as one (finishPrint).
+	void capture(MdSeq* _x)
+	{
+		if(_x->printer->printing())
+			return;
+		const mdseq::Take take = _x->journal->take();
+		logLine(_x, "capture: %zu notes over %.0f ticks%s", take.entries.size(), take.length,
+			take.cut ? ", its beginning lost" : "");
+		printReport(_x, _x->printer->capture(take));
+	}
+
 	// ---- A newer release: looked for once a day, on a thread of its own (updates.h, mdseqUpdates.h) ----
 
 	// What the device knows of a newer release and whether it looks, to the strip's line and the window's switch.
@@ -833,8 +937,11 @@ namespace
 			std::lock_guard<std::mutex> guard((*_x->update)->lock);
 			notice = (*_x->update)->notice;
 		}
+		const std::string shown = _x->updatesEnabled ? notice : std::string();
 		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::Updates), {_x->updatesEnabled ? 1 : 0}, {}});
-		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::Update), {}, {_x->updatesEnabled ? notice : std::string()}});
+		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::Update), {}, {shown}});
+		// The strip's screen for it is there only while it says something.
+		sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::UpdateShown), {shown.empty() ? 0 : 1}, {}});
 	}
 
 	void updateOnMain(MdSeq* _x)
@@ -849,20 +956,9 @@ namespace
 		std::shared_ptr<UpdateLine> line = *_x->update;
 		std::thread([line]
 		{
-			mdseqUpdates::Settings settings = mdseqUpdates::readSettings();
+			const mdseqUpdates::Settings settings = mdseqUpdates::checkOncePerDay();
 			if(!settings.enabled)
 				return;
-			const std::string today = mdseqUpdates::today();
-			if(mdseq::checkDue(settings.lastCheck, today))
-			{
-				if(const std::optional<std::string> answer = mdseqUpdates::fetchReleases())
-				{
-					const std::optional<mdseq::Version> release = mdseq::firstReleaseVersion(*answer);
-					settings.lastCheck = today;
-					settings.latest = release ? mdseq::versionText(*release) : std::string();
-					mdseqUpdates::writeSettings(settings);
-				}
-			}
 			const std::string notice = mdseq::updateNotice(mdseq::parseVersion(settings.latest), MDSEQ_VERSION);
 			std::lock_guard<std::mutex> guard(line->lock);
 			if(!line->alive)
@@ -875,9 +971,7 @@ namespace
 	// The window's switch: kept in the settings for every set; on, a look at once (once a day still), off, no line.
 	void setUpdates(MdSeq* _x, const bool _on)
 	{
-		mdseqUpdates::Settings settings = mdseqUpdates::readSettings();
-		settings.enabled = _on;
-		mdseqUpdates::writeSettings(settings);
+		mdseqUpdates::setEnabled(_on);
 		_x->updatesEnabled = _on;
 		if(_on)
 			lookForUpdate(_x);
@@ -906,12 +1000,287 @@ namespace
 		// The set keeps the Patterns: written once the edits stop.
 		if(patternEdited)
 			clock_fdelay(_x->storeClock, StoreDelayMs);
+		// Push lit as the window and the strip are, whatever changed them.
+		if(_x->pushLink->taken)
+		{
+			_x->pushLink->refresh = true;
+			qelem_set(_x->pushQelem);
+		}
+	}
+
+	// ---- Push 2 (issue 33): its controls through the LOM, as Tuple and issue 33's probe take them ----
+
+	// The id of the object a path names, which live.object then points at; 0 for none.
+	long lomPathId(MdSeq* _x, const std::string& _path)
+	{
+		return lomId(lomText(_x, "path " + _path));
+	}
+
+	bool answersHold(const std::vector<std::vector<t_atom>>& _answers, const char* _name)
+	{
+		t_symbol* name = gensym(_name);
+		for(const auto& answer : _answers)
+			for(const t_atom& a : answer)
+				if(atom_gettype(&a) == A_SYM && atom_getsym(&a) == name)
+					return true;
+		return false;
+	}
+
+	// The control surface to take Push 2 from: of those listing the pads and the encoders, the second, which drives the
+	// hardware (taking the first does nothing: Tuple, and the probe of 2026-10-17); -1 without a Push.
+	int pushSurfaceIndex(MdSeq* _x)
+	{
+		std::vector<int> found;
+		for(int i = 0; i < 20; ++i)
+		{
+			if(!lomPathId(_x, "control_surfaces " + std::to_string(i)))
+				continue;
+			const auto names = lomText(_x, "obj call get_control_names");
+			if(answersHold(names, "Button_Matrix") && answersHold(names, mdseq::push::encoderName(0)))
+				found.push_back(i);
+		}
+		if(found.empty())
+			return -1;
+		return found.size() > 1 ? found[1] : found[0];
+	}
+
+	// Observer _observer of the patch pointed at object _id, or at none with 0: "pushobs observer id n".
+	void pushObserve(MdSeq* _x, const int _observer, const long _id)
+	{
+		t_atom a[3];
+		atom_setlong(a, _observer);
+		atom_setsym(a + 1, gensym("id"));
+		atom_setlong(a + 2, _id);
+		outlet_anything(_x->panelOutlet, sym(mdseq::panelKey(mdseq::PanelKey::PushObserve)), 3, a);
+	}
+
+	void lomCall(MdSeq* _x, const std::string& _call, const std::vector<long>& _args)
+	{
+		std::string text = "obj call " + _call;
+		for(const long v : _args)
+			text += " " + std::to_string(v);
+		lomText(_x, text);
+	}
+
+	// The palette slots the pads use, by Push 2's SysEx through the surface; sent again after taking Push, which drops
+	// what came before the grab took (Tuple).
+	void sendPushPalette(MdSeq* _x)
+	{
+		using namespace mdseq::push;
+		lomText(_x, "id " + std::to_string(_x->pushLink->surface));
+		for(int c = 1; c < ColourCount; ++c)
+		{
+			const auto colour = static_cast<Colour>(c);
+			const std::vector<uint8_t> bytes = paletteEntry(slotOf(colour), colourOf(colour));
+			lomCall(_x, "send_midi", std::vector<long>(bytes.begin(), bytes.end()));
+		}
+		const std::vector<uint8_t> reapply = reapplyPalette();
+		lomCall(_x, "send_midi", std::vector<long>(reapply.begin(), reapply.end()));
+	}
+
+	// A Track played from its pad: its notes out of the MIDI outlet, on the scheduler thread as the Sequencer's.
+	void pushNotes(MdSeq* _x, t_symbol*, const short _argc, t_atom* _argv)
+	{
+		for(short i = 0; i < _argc; ++i)
+			outlet_int(_x->midiOutlet, atom_getlong(_argv + i));
+	}
+
+	void sendPushOutput(MdSeq* _x, const mdseq::PushOutput& _out)
+	{
+		using namespace mdseq::push;
+		PushLink& link = *_x->pushLink;
+		// A Track's pad sounds first, before the lights' LOM calls.
+		if(!_out.notes.empty())
+		{
+			std::vector<t_atom> bytes(_out.notes.size() * 3);
+			for(size_t n = 0; n < _out.notes.size(); ++n)
+				for(size_t b = 0; b < 3; ++b)
+					atom_setlong(&bytes[3 * n + b], _out.notes[n][b]);
+			schedule_delay(_x, reinterpret_cast<method>(pushNotes), 0, nullptr, static_cast<short>(bytes.size()),
+				bytes.data());
+		}
+		if(link.taken && link.matrix && !_out.pads.empty())
+		{
+			lomText(_x, "id " + std::to_string(link.matrix));
+			for(const Pad& pad : _out.pads)
+				lomCall(_x, "send_value", {pad.column, pad.row, pad.colour});
+		}
+		for(const Light& light : _out.buttons)
+		{
+			const long id = link.buttons[static_cast<size_t>(light.button)];
+			if(!link.taken || !id)
+				continue;
+			// The buttons under the display take a palette slot; the others are white, lit at full.
+			const bool coloured = light.button >= Button::LockPage1;
+			lomText(_x, "id " + std::to_string(id));
+			lomCall(_x, "send_value", {light.on ? (coloured ? slotOf(Colour::ButtonOn) : 127) : 0});
+		}
+		const mdseq::EditorOutput& e = _out.editor;
+		if(e.strip.empty() && e.grid.empty() && e.panel.empty() && e.forward.empty())
+			return;
+		emit(_x, e);
+		// Every PushMode call lights what changed, whatever changed it: nothing left to refresh.
+		link.refresh = false;
+	}
+
+	void takePush(MdSeq* _x)
+	{
+		using namespace mdseq::push;
+		PushLink& link = *_x->pushLink;
+		const int index = pushSurfaceIndex(_x);
+		if(index < 0)
+		{
+			logLine(_x, "push: no Push 2");
+			return;
+		}
+		link.surface = lomPathId(_x, "control_surfaces " + std::to_string(index));
+		const auto take = [&](const char* _name, const int _observer) -> long
+		{
+			lomText(_x, "id " + std::to_string(link.surface));
+			const long id = lomId(lomText(_x, std::string("obj call get_control ") + _name));
+			if(!id)
+				return 0;
+			lomCall(_x, "release_control id", {id});
+			lomCall(_x, "grab_control id", {id});
+			pushObserve(_x, _observer, id);
+			return id;
+		};
+		link.matrix = take("Button_Matrix", MatrixObserver);
+		for(int b = 0; b < ButtonCount; ++b)
+			link.buttons[static_cast<size_t>(b)] = take(controlName(static_cast<Button>(b)),
+				buttonObserver(static_cast<Button>(b)));
+		for(int e = 0; e < EncoderCount; ++e)
+			link.encoders[static_cast<size_t>(e)] = take(encoderName(e), encoderObserver(e));
+		link.taken = true;
+		logLine(_x, "push: taken on surface %d", index);
+		sendPushPalette(_x);
+		sendPushOutput(_x, _x->push->setActive(true));
+		link.relights = 3;
+		clock_fdelay(_x->pushClock, 150.0);
+	}
+
+	void releasePush(MdSeq* _x)
+	{
+		using namespace mdseq::push;
+		PushLink& link = *_x->pushLink;
+		if(!link.taken)
+			return;
+		lomText(_x, "id " + std::to_string(link.surface));
+		const auto give = [&](long& _id, const int _observer)
+		{
+			if(!_id)
+				return;
+			lomCall(_x, "release_control id", {_id});
+			pushObserve(_x, _observer, 0);
+			_id = 0;
+		};
+		give(link.matrix, MatrixObserver);
+		for(int b = 0; b < ButtonCount; ++b)
+			give(link.buttons[static_cast<size_t>(b)], buttonObserver(static_cast<Button>(b)));
+		for(int e = 0; e < EncoderCount; ++e)
+			give(link.encoders[static_cast<size_t>(e)], encoderObserver(e));
+		link.taken = false;
+		link.relights = 0;
+		logLine(_x, "push: given back");
+		sendPushOutput(_x, _x->push->setActive(false));
+	}
+
+	// Push taken while wanted, the device on and its track selected; given back otherwise.
+	void reconcilePush(MdSeq* _x)
+	{
+		PushLink& link = *_x->pushLink;
+		if(link.wanted && !link.ownTrack)
+			link.ownTrack = lomPathId(_x, "this_device canonical_parent");
+		const bool want = link.wanted && link.deviceOn && link.ownTrack && link.selectedTrack == link.ownTrack;
+		logLine(_x, "push: wanted %d, device on %d, own track %ld, selected %ld", link.wanted ? 1 : 0,
+			link.deviceOn ? 1 : 0, link.ownTrack, link.selectedTrack);
+		if(want && !link.taken)
+			takePush(_x);
+		else if(!want && link.taken)
+			releasePush(_x);
+	}
+
+	// What observer _argv[0] reports, kept for pushWork: a pad's velocity, column and row, a button's value, an
+	// encoder's relative turn.
+	void queuePushValue(MdSeq* _x, const long _argc, t_atom* _argv)
+	{
+		if(!_x->pushLink->taken || _argc < 2)
+			return;
+		PushLink::Value value{static_cast<int>(atom_getlong(_argv)), {}, 0, 0.0};
+		for(long i = 1; i < _argc && value.count < value.v.size(); ++i)
+			if(atom_gettype(_argv + i) == A_LONG || atom_gettype(_argv + i) == A_FLOAT)
+				value.v[value.count++] = static_cast<long>(atom_getlong(_argv + i));
+		if(value.count == 0)
+			return;
+		clock_getftime(&value.ms);
+		_x->pushLink->values.push_back(value);
+		qelem_set(_x->pushQelem);
+	}
+
+	void pushValue(MdSeq* _x, const PushLink::Value& _value)
+	{
+		const auto& v = _value.v;
+		// Development builds: what each observer reports, the matrix's order not yet seen in Live (issue 33).
+		logLine(_x, "push: observer %d, %zu values: %ld %ld %ld", _value.observer, _value.count, v[0], v[1], v[2]);
+		sendPushOutput(_x, _x->push->observed(_value.observer, v.data(), _value.count, _value.ms));
+	}
+
+	// The palette and every light again, a few times a moment apart after taking Push.
+	void pushRelight(MdSeq* _x)
+	{
+		PushLink& link = *_x->pushLink;
+		if(!link.taken || link.relights <= 0)
+			return;
+		--link.relights;
+		sendPushPalette(_x);
+		sendPushOutput(_x, _x->push->relight());
+		if(link.relights > 0)
+			clock_fdelay(_x->pushClock, 150.0);
+	}
+
+	// pushClock's tick: a relight, from the main thread.
+	void pushSoon(MdSeq* _x)
+	{
+		_x->pushLink->relightDue.store(true, std::memory_order_relaxed);
+		qelem_set(_x->pushQelem);
+	}
+
+	// What the patch reported and the clock asked for, in a main-thread turn of its own, outside Live's notifications
+	// and any print's LOM calls.
+	void pushWork(MdSeq* _x)
+	{
+		PushLink& link = *_x->pushLink;
+		if(link.reconcile)
+		{
+			link.reconcile = false;
+			reconcilePush(_x);
+		}
+		// Swapped out: a LOM call may notify an observer, whose value waits for the next turn.
+		std::vector<PushLink::Value> values;
+		values.swap(link.values);
+		for(const PushLink::Value& value : values)
+			if(link.taken)
+				pushValue(_x, value);
+		if(link.relightDue.exchange(false, std::memory_order_relaxed))
+			pushRelight(_x);
+		if(link.refresh)
+		{
+			link.refresh = false;
+			if(link.taken)
+				sendPushOutput(_x, _x->push->refresh());
+		}
+	}
+
+	void reconcileSoon(MdSeq* _x)
+	{
+		_x->pushLink->reconcile = true;
+		qelem_set(_x->pushQelem);
 	}
 
 	void playedOnMain(MdSeq* _x)
 	{
 		const mdseq::Playhead p = mdseq::unpackPlayhead(_x->playhead.load(std::memory_order_relaxed));
-		emit(_x, _x->editor->follow(p.pattern, p.queued));
+		emit(_x, _x->editor->follow(p.pattern, p.queued, p.chain));
 		emit(_x, _x->editor->played(p.step));
 	}
 
@@ -961,6 +1330,7 @@ namespace
 		// blinks.
 		emit(_x, _x->editor->settle());
 		emit(_x, _x->editor->blink());
+		takePanel(_x, false);
 		if(!kitChanged)
 			return;
 		const std::optional<mdseq::Kit>& kit = _x->kitLink->kit();
@@ -997,14 +1367,40 @@ namespace
 		case mdseq::Message::Restore:
 			restore(_x, _argc, _argv);
 			return;
-		case mdseq::Message::Passes:
-			_x->printPasses = a0 + 1;	// the menu's index, one Pass at 0
+		case mdseq::Message::PrintSource:
+			_x->printSource = std::clamp(a0, 0, mdseq::MaxPasses);
 			return;
 		case mdseq::Message::Print:
-			print(_x);
+			// The menu's last item is the last take, which Capture writes as well.
+			if(_x->printSource == mdseq::MaxPasses)
+				capture(_x);
+			else
+				print(_x);
 			return;
 		case mdseq::Message::Updates:
 			setUpdates(_x, a0 != 0);
+			return;
+		case mdseq::Message::Push:
+			_x->pushLink->wanted = a0 != 0;
+			reconcileSoon(_x);
+			return;
+		case mdseq::Message::DeviceOn:
+			_x->pushLink->deviceOn = a0 != 0;
+			reconcileSoon(_x);
+			return;
+		case mdseq::Message::SelectedTrack:
+			// "id n": the track's id last
+			_x->pushLink->selectedTrack = _argc > 0 ? static_cast<long>(atom_getlong(_argv + _argc - 1)) : 0;
+			reconcileSoon(_x);
+			return;
+		case mdseq::Message::PushValue:
+			queuePushValue(_x, _argc, _argv);
+			return;
+		case mdseq::Message::Capture:
+			capture(_x);
+			return;
+		case mdseq::Message::Output:
+			_x->toClips.store(a0 != 0, std::memory_order_relaxed);
 			return;
 		case mdseq::Message::LomId:
 		case mdseq::Message::LomReply:
@@ -1018,8 +1414,11 @@ namespace
 			return;
 		}
 		case mdseq::Message::Redraw:
-			// The release line and its switch, which no Pattern holds, with everything else.
+			// The release line and its switch, the take and the Print menu, which no Pattern holds, with everything
+			// else.
 			updatePanel(_x);
+			takePanel(_x, true);
+			sendPanel(_x, {mdseq::panelKey(mdseq::PanelKey::PrintSource), {static_cast<int>(_x->printSource)}, {}});
 #ifdef MDSEQ_DEV
 			// live.thisdevice bangs once the set's values are in: the demonstration comes after them, so that a
 			// Blob's initial value does not empty it.
@@ -1033,6 +1432,12 @@ namespace
 			break;
 		default:
 			break;
+		}
+		// One of the external's own that the switch above forgot: no Editor takes it.
+		if(mdseq::ownedByExternal(message->message))
+		{
+			object_error(reinterpret_cast<t_object*>(_x), "%s is not handled", _s->s_name);
+			return;
 		}
 
 		// The Editor's: its integers as the patch sends them, to the call mdseq::toEditor makes. Refused, it lacks
@@ -1108,7 +1513,7 @@ namespace
 			// "passes <n>" then "print": a print, as the window's Print does
 			if(strncmp(line, "passes ", 7) == 0)
 			{
-				_x->printPasses = atol(line + 7);
+				_x->printSource = atol(line + 7) - 1;
 				continue;
 			}
 			if(strcmp(line, "print") == 0)
@@ -1202,6 +1607,8 @@ namespace
 	//   pattern <1-16> (the lines after it edit that Pattern; the device ends on the one of the last such line)
 	//   scale <0-6> (1/8x to 2x)
 	//   swing <50-80> (percent), swingstep <step> <0|1> (the swing row, for every Track)
+	//   accent <0-127> (the amount), accentstep <step> <0|1> (the Accent row, for every Track)
+	//   slidestep <step> <0|1> (the Slide row, for every Track)
 	// else Track 1 on the beats with VOL (17) locked to 0 on 2 and 4, and Track 7 on the off-beats.
 	void loadDemo(MdSeq* _x)
 	{
@@ -1274,6 +1681,12 @@ namespace
 				apply({mdseq::Input::Kind::SetSwingStep, 0, a - 1, b});
 			else if(sscanf(line, "swing %d", &a) == 1)
 				apply({mdseq::Input::Kind::SetSwing, 0, 0, a});
+			else if(sscanf(line, "accentstep %d %d", &a, &b) == 2)
+				apply({mdseq::Input::Kind::SetAccentStep, 0, a - 1, b});
+			else if(sscanf(line, "slidestep %d %d", &a, &b) == 2)
+				apply({mdseq::Input::Kind::SetSlideStep, 0, a - 1, b});
+			else if(sscanf(line, "accent %d", &a) == 1)
+				apply({mdseq::Input::Kind::SetAccent, 0, 0, a});
 			else if(sscanf(line, "condition %d %d %d", &a, &b, &c) == 3)
 				apply({mdseq::Input::Kind::SetCondition, a - 1, b - 1, c});
 			else if(sscanf(line, "micro %d %d %d", &a, &b, &c) == 3)
@@ -1307,6 +1720,11 @@ namespace
 		// Each start of the transport draws its Conditions from this, so that two takes differ.
 		x->sequencer = new mdseq::Sequencer(randomSeed());
 		x->editor = new mdseq::Editor();
+		x->editor->setWindow(false);	// the edit window opens closed
+		x->push = new mdseq::PushMode(*x->editor);
+		x->pushLink = new PushLink();
+		x->pushClock = static_cast<t_clock*>(clock_new(x, reinterpret_cast<method>(pushSoon)));
+		x->pushQelem = static_cast<t_qelem*>(qelem_new(x, reinterpret_cast<method>(pushWork)));
 		x->timer = static_cast<t_object*>(
 			time_new(reinterpret_cast<t_object*>(x), gensym("timer"), reinterpret_cast<method>(timer),
 				TIME_FLAGS_TICKSONLY | TIME_FLAGS_USECLOCK));
@@ -1322,9 +1740,12 @@ namespace
 		x->armedTick = mdseq::Never;
 		new(&x->playhead) std::atomic<uint32_t>(mdseq::packPlayhead({}));
 		new(&x->startSeed) std::atomic<uint64_t>(0);
-		x->printPasses = 4;
+		x->printSource = 3;	// Pattern ×4, as the menu shows from the load on
 		x->lomSet = new LomSet(x);
 		x->printer = new mdseq::Printer(*x->lomSet);
+		x->journal = new mdseq::Journal();
+		new(&x->toClips) std::atomic<bool>(false);
+		x->takeShown = new std::string();
 		x->printClock = static_cast<t_clock*>(clock_new(x, reinterpret_cast<method>(printSoon)));
 		x->printQelem = static_cast<t_qelem*>(qelem_new(x, reinterpret_cast<method>(finishPrint)));
 		x->store = new mdseq::PatternStore();
@@ -1344,7 +1765,7 @@ namespace
 		x->demoLoaded = false;
 		x->lomInbox = new std::vector<std::vector<t_atom>>();
 		clock_fdelay(x->heartbeat, HeartbeatMs);
-		object_post(reinterpret_cast<t_object*>(x), "md-drums-seq %s core ready", MDSEQ_VERSION);
+		object_post(reinterpret_cast<t_object*>(x), "MoDule Seq %s core ready", MDSEQ_VERSION);
 		if constexpr(Dev)
 		{
 			logLine(x, "created; MD Drums' file for this device: %s",
@@ -1370,6 +1791,11 @@ namespace
 		clock_unset(_x->kitClock);
 		object_free(_x->kitClock);
 		qelem_free(_x->kitQelem);
+		// Push taken is left to Live to give back with the device: releasing here would reach the patch's objects as they
+		// are freed. Unchecked in Live yet (issue 33).
+		clock_unset(_x->pushClock);
+		object_free(_x->pushClock);
+		qelem_free(_x->pushQelem);
 		// A look for a release still running finds the device gone and touches nothing.
 		{
 			std::lock_guard<std::mutex> guard((*_x->update)->lock);
@@ -1380,15 +1806,20 @@ namespace
 		delete _x->kitLink;
 		delete _x->helloPace;
 		delete _x->printer;
+		delete _x->journal;
+		delete _x->takeShown;
 		delete _x->lomSet;
 		itm_dereference(_x->itm);
 		delete _x->sequencer;
+		delete _x->push;
+		delete _x->pushLink;
 		delete _x->editor;
 		delete _x->store;
 		delete _x->lomInbox;
 		// Nothing reads them now that the clocks, the timer and the qelems are gone.
 		std::destroy_at(&_x->playhead);
 		std::destroy_at(&_x->startSeed);
+		std::destroy_at(&_x->toClips);
 	}
 }
 

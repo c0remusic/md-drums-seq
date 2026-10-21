@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v7, allure Overbridge</title>
+<link rel="stylesheet" href="v7-ui.css">
+<link rel="stylesheet" href="v7-var-look-overbridge.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v7, allure Overbridge</h1>
+	<p class="note">Variante sur un seul axe, juste pour voir : la disposition de la v7, l'allure des machines Elektron et
+		d'Overbridge (faces presque noires, filets fins, petites capitales espacées, écrans OLED, trigs rouges, Locks
+		jaunes, Tracks qui jouent en vert, modes signalés par une LED ambre en haut de la touche, encodeurs en anneau).
+		Leurs codes visuels, pas leur marque. Constructible avec les mêmes objets Max : couleurs, polices et dessins du
+		lcd.</p>
+
+	<div class="switch" id="look">
+		<button class="on" data-look="ob">Allure Overbridge</button>
+		<button data-look="v7">Allure v7 (Live)</button>
+	</div>
+
+	<div id="ob">
+		<h2>Bande</h2>
+		<div class="fam-ob" id="ob-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-ob" id="ob-window"></div>
+	</div>
+	<div id="v7" class="roles" hidden>
+		<h2>Bande</h2>
+		<div class="fam-live" id="v7-strip"></div>
+		<h2>Fenêtre d'édition</h2>
+		<div class="fam-live" id="v7-window"></div>
+	</div>
+</div>
+<script src="v7-ui.js"></script>
+<script src="v7-var-look-overbridge.js"></script>
+<script>
+	// Canvases take a font once it has loaded
+	Promise.all([document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMockOb.strip(document.getElementById("ob-strip"));
+			mdSeqMockOb.editWindow(document.getElementById("ob-window"));
+			mdSeqMock7.strip(document.getElementById("v7-strip"));
+			mdSeqMock7.editWindow(document.getElementById("v7-window"));
+		});
+	document.querySelectorAll("#look button").forEach(b => b.addEventListener("click", () => {
+		document.querySelectorAll("#look button").forEach(x => x.classList.toggle("on", x === b));
+		document.getElementById("ob").hidden = b.dataset.look !== "ob";
+		document.getElementById("v7").hidden = b.dataset.look !== "v7";
+	}));
+</script>
+</body>
+</html>

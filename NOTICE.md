@@ -1,9 +1,9 @@
 # Notices
 
-md-drums-seq, a Max for Live step sequencer for MD Drums.
+MoDule Seq (md-drums-seq up to 0.1.1), a Max for Live step sequencer for MoDule.
 Copyright (C) 2026 c0remusic.
 
-md-drums-seq is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+MoDule Seq is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
 version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details
@@ -33,5 +33,5 @@ commit), under this licence:
 > OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 > OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Max, Max for Live and Ableton Live are trademarks of their owners; md-drums-seq is not affiliated with Cycling '74 or
-Ableton. Machinedrum is a trademark of Elektron Music Machines; MD Drums is an independent emulation of its engines.
+Max, Max for Live and Ableton Live are trademarks of their owners; MoDule Seq is not affiliated with Cycling '74 or
+Ableton. Machinedrum is a trademark of Elektron Music Machines; MoDule is an independent emulation of its engines.

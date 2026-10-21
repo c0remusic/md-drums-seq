@@ -12,10 +12,13 @@ MIDI) ; c'est le cas de tout ce qui sert à jouer.
 | `track-1` … `track-16` | Track montrée | boutons radio | 1-16 | non |
 | `mute-1` … `mute-16` | Mute de la Track | bascules | joue / muette | oui (16 paramètres) |
 | `step-1` … `step-16` | Pas de la page montrée, pour la Track montrée | bascules | Hit ou rien ; dessinés par un `lcd` (comme la grille), position de lecture encadrée | non |
-| `page-1` … `page-4` | Page de 16 pas montrée | boutons radio | 1-16, 17-32, 33-48, 49-64 | non |
+| `page-1` … `page-4` | Page de 16 pas montrée | boutons radio | 1-16, 17-32, 33-48, 49-64 ; celles au-delà de la longueur inactives | non |
 | `fill` | Fill | momentané | tenu = Fill | oui |
+| `chain` | Mode Chain | bascule | allumé : les Patterns cliqués font une chaîne | non |
+| `output` | Clips only : le device ne joue plus MoDule, ses clips le jouent | bascule | éteint / allumé | oui (« Output ») |
+| `capture` | La dernière prise en clips de Session | bouton | actif quand la prise a une note | non |
 | `edit` | Ouvre la fenêtre d'édition | bouton | | non |
-| `capture` | Où va ce qui est joué | affichage | Session, ou Arrangement quand l'enregistrement de Live est armé | non |
+| `push` | Push 2 joue le device tant que sa piste est sélectionnée | bascule | éteint au chargement | non |
 
 ## Fenêtre d'édition
 
@@ -27,8 +30,8 @@ MIDI) ; c'est le cas de tout ce qui sert à jouer.
 | `win-page-1`, `win-page-2` | Moitié du Pattern montrée | boutons radio | 1-32, 33-64 | non |
 | `follow` | La moitié montrée suit la lecture | bascule | | non |
 | `win-fill` | Fill | momentané | | même paramètre que `fill` |
-| `print` | Imprimer N Passes dans un clip par Track | bouton + nombre | 1-16 Passes | non |
-| `win-capture` | Où va ce qui est joué | affichage | Session / Arrangement | non |
+| `print-source` | Ce que Print écrit | menu | le Pattern affiché sur 1-16 Passes, ou la dernière prise | non |
+| `print` | Imprimer dans un clip de Session par Track | bouton | | non |
 | `win-mute-1` … `win-mute-16` | Mute de la Track | bascules | | mêmes paramètres que `mute-*` |
 | `cell-<t>-<s>` | Pas `s` (1-64) de la Track `t` (1-16) | case d'un `lcd` | vide ou Hit ; clic = Hit, sélection pour le panneau | non |
 | `step-hit` | Hit du pas sélectionné | bascule | | non |
@@ -38,6 +41,7 @@ MIDI) ; c'est le cas de tout ce qui sert à jouer.
 | `step-ratchets` | Ratchets | menu | 1-8 Hits répartis dans le pas | non |
 | `step-ratchet-curve` | Courbe de vélocité des ratchets | glissière | -100 % à +100 % | non |
 | `lock-1` … `lock-24` | Lock sur le paramètre 1-24 de la Track (SYN1-8 nommés selon sa Machine, puis AMD … SRR, DIST … LFOM) | boutons rotatifs | 0-127, 63 sauté (ADR 0003 de MD Drums)  ; sans Lock, bouton inactif marqué « Kit » (le device ne connaît pas la valeur du Kit) ; tourner crée le Lock, Alt-clic le retire | non |
+| `updates` | Chercher une nouvelle version une fois par jour | bascule | réglage du device, pour tous les sets | non |
 
 Sémantique des pas et des Conditions : ticket « Sémantique du Pattern » (`.scratch/seq-v1/issues/02-semantique-du-pattern.md`).
 Pas de JS (ADR 0001) : les pas de la bande et la grille sont des `lcd`, tout le reste des objets `live.*`.

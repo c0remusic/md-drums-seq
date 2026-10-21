@@ -1,7 +1,7 @@
 # Banques Push pour MD Drums
 
 Type: grilling
-Status: open
+Status: resolved
 Assignee: —
 Blocked by: — (décision de l'utilisateur)
 
@@ -48,7 +48,14 @@ MD Drums Seq et celui de MD Drums), qui se battent à la lecture. Pistes :
 
 ## Answer
 
-—
+Fermé le 2026-10-19 par l'utilisateur, dépassé : rien à construire dans md-drums-seq. Les deux besoins ont trouvé
+leur place ailleurs :
+- **Régler MD Drums depuis Push et enregistrer les gestes** : MoDule le fait lui-même. Ses 32 relais suivent la
+  Track que son éditeur montre, et « Prepare Push list » range dans l'ordre les paramètres des Tracks pour le mode
+  Configure de Live (tickets 27, 34 et 37 de MD Drums, `docs/md-drums-push2.md` de MoDule). L'automation vit sur
+  MoDule, pas sur un device Max.
+- **Jouer et éditer le séquenceur depuis Push** : le mode Push de md-drums-seq (ticket 33), qui prend les contrôles
+  par `grab_control` sans paramètre Live, donc sans double automation.
 
 ## Comments
 

@@ -41,4 +41,7 @@ namespace mdseq
 	// lands at the clip's end (looping, it sounds before each repeat, as the device plays it); a note that runs past
 	// the end stops there.
 	Printed printPattern(const Pattern& _pattern, int _passes, uint64_t _startSeed, bool _fill);
+
+	// Each clip's notes by start, a Hit (36-51) before the Locks and the trigs that go with it.
+	void sortNotes(Printed& _printed);
 }

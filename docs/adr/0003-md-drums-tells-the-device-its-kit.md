@@ -9,8 +9,9 @@ the file by a name it gives MD Drums through the MIDI it already sends.
 124, 125, 126 and 127 in that order, each with velocity 1 + six bits of the id (bits 23-18, 17-12, 11-6, 5-0), each
 followed by its note-off. MD Drums takes four consecutive note-ons 124 to 127, in that order and on any channel, as one
 hello, whether the transport runs or not; any other note between them cancels it. They trigger nothing and lock
-nothing. The device sends a hello when it is created, then every second while it finds no file for its id, and every
-five seconds while it finds one.
+nothing. The device sends a hello when it is created; while it finds no file for its id, 1, 2, 4 and 8 seconds
+later, then every ten seconds; every ten seconds while it finds one; and from a second again once the file has gone
+(amended 2026-10-20: every second and every five seconds before, which the user saw as MIDI sent while stopped).
 
 **The file.** `<temp>/md-drums-seq/<id>.kit`, where `<temp>` is the system's temporary folder as both sides take it,
 `std::filesystem::temp_directory_path` (`GetTempPath` on Windows: `TMP`, then `TEMP`; `$TMPDIR` elsewhere), and
@@ -22,11 +23,15 @@ instance goes away. UTF-8 text, one record per line, fields separated by one spa
 ```
 md-drums-kit 1
 kit <the Kit's name, to the end of the line>
-track <1-16> <Machine id 0-191> <Machine name> <SYN1 name> <SYN2 name> ... <SYN8 name>
+track <1-16> <Machine id 0-255> <Machine name> <SYN1 name> <SYN2 name> ... <SYN8 name>
 values <1-16> <the Kit's 24 values of the Track's parameters, 0-127, in the Locks' order>
 ```
 
-A SYN name the Machine does not use is `-`. A Track whose Machine MD Drums does not know yet has no `track` line. The
+A SYN name the Machine does not use is `-`. A Track whose Machine MD Drums does not know yet has no `track` line.
+Amended 2026-10-20: a Machine id is a byte, 0-191 for the Machinedrum's, then MoDule's User Machines from 194 named
+as their packages name them; a ROM Machine playing a user's Sample takes the Sample file's name, spaces as `_`, and
+a name may be longer than any box shows: the device cuts it to its box (`fitText`). The device read 0-191 only
+before, and left a User Machine's Track unnamed. The
 first line names the format's version: the device reads version 1 and ignores a file of another, and ignores lines it
 does not know, so that a later version can add some.
 
@@ -47,7 +52,7 @@ does not know, so that a later version can add some.
 - Amends ADR 0003 of gearmulator-md-drums: notes 124-127 from the host are the device's hello, MD Drums' only notes
   outside Hits and Locks.
 - The device's name for its MD Drums lives a process at most: an id is drawn at each creation, so a file left by a
-  crash names no device. A device routed to another MD Drums is found by the new one within five seconds, once the old
+  crash names no device. A device routed to another MD Drums is found by the new one within ten seconds, once the old
   one has forgotten it after fifteen.
 - A MIDI clip recorded from the device's output keeps its hellos; played, they make MD Drums write a file that no
   device reads, deleted fifteen seconds later. A print carries none: it renders the Pattern only.

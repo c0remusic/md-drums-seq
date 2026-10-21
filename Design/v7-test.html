@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v7</title>
+<link rel="stylesheet" href="v7-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v7</h1>
+	<p class="note">La v6, retouchée le 2026-10-20 : une seule police, des écrans pour les textes qui disent un état, et le
+		nom MoDule Seq. Mêmes objets Max natifs : lcd, live.* et panel, sans JavaScript dans le device.</p>
+
+	<h2>Ce qui change depuis la v6</h2>
+	<ul class="changes">
+		<li><b>Une seule police, Ableton Sans</b>, celle que le Max de Live fournit, partout : objets live.* et dessins
+			du lcd (les Conditions des cases étaient en Arial). Une seule échelle : 10 px pour les étiquettes, les valeurs,
+			les boutons et les écrans, 11 px pour les noms des Tracks, 13 px gras pour les titres et FILL. Le nom de la
+			Track montrée n'est plus plus grand que les autres, seulement en gras.</li>
+		<li><b>Des écrans.</b> Chaque texte qui dit un état est dans un petit afficheur sombre bordé : état du Pattern,
+			chaîne, prise, nouvelle version, pas montré, vélocité, micro-timing, courbe des ratchets, valeur de chaque Lock
+			(celle du Kit en italique, un Lock dans l'accent), ligne d'état de Print. Le nom d'un contrôle reste dehors,
+			comme une étiquette.</li>
+		<li><b>Le nom : MoDule Seq</b>, dans le titre du device et de sa fenêtre.</li>
+	</ul>
+
+	<h2>Ce que la v6 a changé, gardé</h2>
+	<ul class="changes">
+		<li><b>Bande, colonne de droite en trois groupes.</b> Play : FILL et Chain, de même taille, la chaîne dessous.
+			Output : « Clips only » et Capture, la prise dessous. Puis Edit et Push.</li>
+		<li><b>Un seul Print.</b> Dans la fenêtre, un menu choisit la source (« Pattern ×1 » à « ×16 », « Last take
+			(12 bars) »), un bouton imprime. Le menu ne déclenche plus rien seul. La case morte « Session » disparaît.</li>
+		<li><b>Barre du haut en groupes</b>, séparés par un filet : Pattern (Copy to, Length, ×2, Scale), vue (moitiés,
+			Follow), FILL, Print.</li>
+		<li><b>« Check for updates » quitte le panneau du pas</b> pour un pied de fenêtre, avec la ligne d'état de Print,
+			en gris : c'est un réglage du device, pas une propriété du pas.</li>
+		<li><b>Longueur visible.</b> Les pas au-delà de la longueur sont estompés dans la grille, un trait marque la fin du
+			Pattern, et les pages hors longueur de la bande sont éteintes et inertes. Ici, longueur 48.</li>
+		<li><b>Couleurs par rôle.</b> L'orange reste au contenu : Hits, Pattern, Track et page choisis. Le bleu, déjà
+			celui de la sélection et du pas joué, passe aux modes qui changent ce que font les mains : Follow, Chain, Clips
+			only, Push, Fill edit. Les réglages du device restent gris.</li>
+	</ul>
+
+	<div class="switch" id="scheme">
+		<button class="on" data-roles="1">Couleurs v6 : par rôle</button>
+		<button data-roles="0">Couleurs v5 : tout en orange</button>
+	</div>
+
+	<div class="roles" id="mock">
+		<h2>Bande, après</h2>
+		<div class="fam-live" id="strip"></div>
+		<h2>Fenêtre d'édition, après</h2>
+		<div class="fam-live" id="window"></div>
+	</div>
+
+	<h2>Le menu de Print, ouvert</h2>
+	<div class="menu-open">
+		<div>Pattern ×1</div>
+		<div>Pattern ×2</div>
+		<div class="sel">Pattern ×4</div>
+		<div>…</div>
+		<div>Pattern ×16</div>
+		<div class="sep">Last take (12 bars)</div>
+	</div>
+
+	<h2>Avant : la bande et la fenêtre dans Live, le 2026-10-20</h2>
+	<div class="compare">
+		<figure><img src="v6-before-strip.png" alt="La bande dans Live"><figcaption>Bande actuelle</figcaption></figure>
+		<figure><img src="v6-before-edit.png" alt="La fenêtre d'édition dans Live"><figcaption>Fenêtre actuelle</figcaption></figure>
+	</div>
+</div>
+<script src="v7-ui.js"></script>
+<script>
+	// The cells are drawn on canvases, which take a font only once it has loaded: Ableton Sans first, as the device's
+	// lcd will have it from Max
+	Promise.all([document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMock7.strip(document.getElementById("strip"));
+			mdSeqMock7.editWindow(document.getElementById("window"));
+		});
+	document.querySelectorAll("#scheme button").forEach(b => b.addEventListener("click", () => {
+		document.querySelectorAll("#scheme button").forEach(x => x.classList.toggle("on", x === b));
+		document.getElementById("mock").classList.toggle("roles", b.dataset.roles === "1");
+	}));
+</script>
+</body>
+</html>

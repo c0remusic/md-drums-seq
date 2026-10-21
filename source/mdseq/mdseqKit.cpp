@@ -10,7 +10,7 @@ namespace mdseq
 	namespace
 	{
 		constexpr std::string_view Header = "md-drums-kit 1";
-		constexpr int MaxMachine = 191;
+		constexpr int MaxMachine = 255;	// a byte: the Machinedrum's 0-191, then MoDule's User Machines from 194
 		constexpr uint32_t IdMask = 0xFFFFFF;
 
 		// _line's fields, split on single spaces.
@@ -161,13 +161,19 @@ namespace mdseq
 
 	bool HelloPace::tick(const KitFile::State _file)
 	{
-		// MD Drums answers a hello within a second; then it only has to hear that the device is still there.
-		constexpr int TicksUnanswered = 2;	// a second
-		constexpr int TicksAnswered = 10;	// five seconds
-		const int due = _file == KitFile::State::Absent ? TicksUnanswered : TicksAnswered;
+		// MD Drums answers a hello within a second; then it only has to hear that the device is still there. Without an
+		// answer, there may be no MD Drums on the track at all: each hello waits twice as long as the one before.
+		constexpr int TicksFirst = 2;	// a second
+		constexpr int TicksMost = 20;	// ten seconds
+		const bool answered = _file != KitFile::State::Absent;
+		if(answered)
+			m_wait = 1;
+		const int due = answered ? TicksMost : std::max(m_wait, TicksFirst);
 		if(m_sinceHello >= 0 && ++m_sinceHello < due)
 			return false;
 		m_sinceHello = 0;
+		if(!answered)
+			m_wait = std::min(2 * m_wait, TicksMost);
 		return true;
 	}
 }

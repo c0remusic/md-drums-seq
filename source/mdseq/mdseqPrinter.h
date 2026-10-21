@@ -8,6 +8,7 @@
 // returns (measured 2026-10-14: right after, "Track In" alone), so a print takes two steps, the second called again
 // until the channels are listed. Main thread; it allocates.
 
+#include "mdseqCapture.h"
 #include "mdseqPrint.h"
 #include "mdseqTypes.h"
 
@@ -43,6 +44,10 @@ namespace mdseq
 		virtual ~LiveSet() = default;
 
 		virtual SetView read() = 0;
+		// The set as read gives it, but with only the tracks at _indices read: the others keep their place, empty,
+		// and the selected scene is not read. A print's second step checks its own tracks so, without asking the LOM
+		// for every track's name and routing again.
+		virtual SetView readTracks(const std::vector<int>& _indices) = 0;
 		virtual bool hasClip(int _index, int _scene) = 0;
 
 		// A MIDI track inserted at _index, named _name; false when Live made none.
@@ -56,9 +61,10 @@ namespace mdseq
 		virtual std::string trackName(int _index) = 0;
 
 		virtual void createScene(int _index) = 0;
-		// A clip of _length beats in an empty slot, named _name, holding _notes; false when Live made none.
+		// A clip of _length beats in an empty slot, named _name, holding _notes, looping or not; false when Live made
+		// none.
 		virtual bool createClip(int _index, int _scene, double _length, const std::string& _name,
-			const std::vector<PrintedNote>& _notes) = 0;
+			const std::vector<PrintedNote>& _notes, bool _loop) = 0;
 	};
 
 	// The Track (0-15) a channel's display name names ("3-MD Drums" is 2), -1 for any other ("Track In").
@@ -90,6 +96,11 @@ namespace mdseq
 		// before it still getting their channel.
 		Report print(const Pattern& _pattern, int _index, int _passes, uint64_t _seed, bool _fill);
 
+		// The first step of a capture (issue 23): the take's clips (takeClips), named "Take n" and not looping, placed
+		// as a print's, its second step resume as a print's. The captures begun are numbered from 1; a take without a
+		// note numbers none.
+		Report capture(const Take& _take);
+
 		// The second step: the created tracks' channels, tried again until the set lists them, then the scene, the
 		// clips and the status line. No clip at all when a track the plan names is no longer at its index (moved,
 		// or one inserted or deleted before it): the track there now would get it. A created track is known there
@@ -107,6 +118,17 @@ namespace mdseq
 			int index;
 		};
 
+		// What the status line says of a print or a capture.
+		struct Words
+		{
+			const char* doing;		// "Printing..."
+			const char* during;		// "tracks moved while printing"
+			const char* done;		// "Printed P01 ×4 in scene 3"
+			const char* notDone;	// "Not printed: ..."
+		};
+
+		// The first step of either, once m_printed, m_clipName, m_loop and m_words are set.
+		Report begin();
 		void plan(const SetView& _view);
 		// Whether the track planned for _track (0-15) is still at its index in _view.
 		bool inPlace(const SetView& _view, int _track) const;
@@ -120,8 +142,9 @@ namespace mdseq
 		LiveSet& m_set;
 		bool m_printing = false;
 		Printed m_printed;
-		int m_pattern = 0;
-		int m_passes = 0;
+		std::string m_clipName;		// "P01 ×4", "Take 3"
+		bool m_loop = true;
+		const Words* m_words = nullptr;
 		std::string m_deviceName;
 		std::vector<Created> m_created;				// in Track order, right after the device's track
 		std::array<int, TrackCount> m_trackOf{};	// each Track's clip's track once the tracks are created, or -1
@@ -130,6 +153,7 @@ namespace mdseq
 		int m_scene = 0;							// the scene the clips go to, once it exists
 		std::vector<Created> m_unrouted;			// created tracks still without their channel
 		int m_attempts = 0;
+		int m_takes = 0;	// the captures begun, which number the next "Take n"
 		std::string m_refusal;						// why the print writes no clip, found in the first step
 		std::vector<std::string> m_warnings;
 	};

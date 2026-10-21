@@ -1,0 +1,249 @@
+/* MoDule Seq mockup v8: v7-ui.css, then the theme .fam-v8 at its end (the Overbridge structure in MoDule's colours) */
+
+.fam-live {
+	--chrome: #2b2b2b;       /* around the device */
+	--bg: #383838;           /* device face */
+	--panel: #1e1e1e;        /* control wells, cells */
+	--panel-beat: #262626;   /* every fourth step's cell */
+	--line: #4a4a4a;
+	--border: #5e5e5e;
+	--text: #dadada;
+	--text-dim: #a2a2a2;
+	--text-faint: #767676;
+	--hit: #ffa52e;          /* a Hit: Live's orange "on" */
+	--on: #ffa52e;           /* a chosen option */
+	--on-text: #1e1e1e;
+	--accent: #7cc6ff;       /* selection, playhead, Locks */
+	--active: #f2d33a;       /* a Track that plays: Live's activator yellow */
+	--muted: #4a4a4a;
+	--cond: #c9a0ff;
+	--font: "Ableton Sans", Arial, Helvetica, sans-serif;
+	--fs-s: 10px; --fs-m: 11px; --fs-l: 13px; --fs-xl: 16px;
+	--radius: 2px;
+}
+
+.fam-v22 {
+	--chrome: #151618;
+	--bg: #1b1c1e;
+	--panel: #26272a;
+	--panel-beat: #2e2f33;
+	--line: #3a3c40;
+	--border: #6e7177;
+	--text: #f2f2f2;
+	--text-dim: #a7aaaf;
+	--text-faint: #8e9197;
+	--hit: #f2f2f2;          /* content is ink */
+	--on: #f2f2f2;
+	--on-text: #1b1c1e;
+	--accent: #6fd1c4;       /* what is live: shown Track, playhead, Locks */
+	--active: transparent;
+	--muted: #ff7a5c;
+	--cond: #6fd1c4;
+	--font: Inter, Arial, Helvetica, sans-serif;
+	--fs-s: 12px; --fs-m: 12px; --fs-l: 14px; --fs-xl: 22px;
+	--radius: 0px;
+}
+
+body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 Arial, sans-serif; }
+.page { padding: 24px; }
+.page h1 { font-size: 20px; margin: 0 0 4px; }
+.page h2 { font-size: 16px; margin: 32px 0 8px; }
+.page p.note { color: #9a9a9a; max-width: 1000px; margin: 4px 0 12px; }
+
+.host { background: var(--chrome); padding: 12px; display: inline-block; font-family: var(--font); }
+.device { position: relative; background: var(--bg); color: var(--text); }
+.device .titlebar { height: 18px; background: var(--panel); color: var(--text-dim); font-size: var(--fs-s);
+	line-height: 18px; padding-left: 8px; border-bottom: 1px solid var(--line); }
+.area { position: relative; }
+.abs { position: absolute; box-sizing: border-box; }
+
+.label { color: var(--text-dim); font-size: var(--fs-s); line-height: 12px; }	/* as Live and live.comment write them */
+.fam-v22 .label { text-transform: none; font-weight: 600; letter-spacing: 1px; }
+.hint { color: var(--text-faint); font-size: var(--fs-s); }
+
+.btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text);
+	font-size: var(--fs-m); display: flex; align-items: center; justify-content: center; cursor: default;
+	user-select: none; }
+.fam-live .btn { border-color: #121212; }
+.btn.on { background: var(--on); color: var(--on-text); border-color: var(--on); }
+.btn.queued { box-shadow: inset 0 0 0 2px var(--accent); animation: queued 0.6s steps(2) infinite; }
+@keyframes queued { 50% { box-shadow: inset 0 0 0 2px transparent; } }
+.btn.empty { color: var(--text-faint); }
+.btn.big { font-size: var(--fs-l); font-weight: 600; }
+
+.track { flex-direction: column; align-items: flex-start; justify-content: center; padding-left: 4px; line-height: 1.1; }
+.track .num { font-size: var(--fs-s); color: var(--text-faint); }
+.track .name { font-size: var(--fs-m); }
+.track.on .num, .track.on .name { color: var(--on-text); }
+.fam-v22 .track.on { background: var(--panel); color: var(--text); border-color: var(--accent);
+	box-shadow: inset 0 -2px 0 var(--accent); }
+.fam-v22 .track.on .num { color: var(--text-dim); } .fam-v22 .track.on .name { color: var(--text); }
+
+.mute { font-size: var(--fs-s); }
+.fam-live .mute { background: var(--active); color: #1e1e1e; border-color: #121212; }
+.fam-live .mute.muted { background: var(--muted); color: var(--text-faint); }
+.fam-v22 .mute.muted { background: var(--muted); color: #1b1c1e; border-color: var(--muted); }
+
+.step { background: var(--panel); border: 1px solid transparent; border-radius: var(--radius); }
+.step.beat { background: var(--panel-beat); }
+.step .hitbox { position: absolute; left: 3px; right: 3px; top: 3px; bottom: 3px; background: var(--hit);
+	border-radius: var(--radius); }
+.step .tick { position: absolute; top: 3px; bottom: 3px; width: 1px; background: var(--panel); }
+.step .lockdot { position: absolute; right: 2px; top: 2px; width: 5px; height: 5px; background: var(--accent);
+	border-radius: 50%; box-shadow: 0 0 0 1px var(--panel); }
+.fam-v22 .step .lockdot { border-radius: 0; }
+.step .cond { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font-size: var(--fs-s);
+	color: var(--on-text); font-weight: 600; line-height: 1; }
+.step .condbar { position: absolute; left: 3px; right: 3px; bottom: 0; height: 2px; background: var(--cond); }
+.step.play { border-color: var(--accent); }
+.step.sel { box-shadow: 0 0 0 2px var(--accent); z-index: 2; }
+.col-play { background: var(--accent); opacity: 0.12; pointer-events: none; }
+
+.rule { background: var(--line); }
+.menu { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-m);
+	color: var(--text); padding: 0 6px; display: flex; align-items: center; justify-content: space-between; }
+.fam-live .menu { border-color: #121212; }
+.menu::after { content: "▾"; color: var(--text-faint); font-size: var(--fs-s); }
+.slider { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.fam-live .slider { border-color: #121212; }
+.slider .centre { position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1px; background: var(--line); }
+.slider .val { position: absolute; top: 4px; bottom: 4px; background: var(--accent); }
+
+.dialname { font-size: var(--fs-s); color: var(--text-dim); letter-spacing: 0.5px; }
+.dialval { font-size: var(--fs-m); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.dialval.locked { color: var(--accent); font-weight: 600; }
+.dialname.locked { color: var(--text); }
+.title-l { font-size: var(--fs-xl); color: var(--text); }
+.fam-v22 .title-l { font-weight: 600; letter-spacing: 1px; }
+
+/* v2: what lcd draws is on a canvas; transparent hot zones carry the ids and the hover text */
+.lcd { position: absolute; image-rendering: auto; }
+.hot { position: absolute; box-sizing: border-box; background: transparent; cursor: default; }
+.hot:hover { outline: 1px solid var(--text-dim); }
+.dialval.kit { color: var(--text-dim); font-style: italic; }	/* the Kit's value: quieter than a Lock, still read */
+.note-lcd { color: #9a9a9a; font-size: 12px; max-width: 1100px; }
+.dialname.unused { color: var(--text-faint); font-style: italic; }
+
+/* v6: what is past the Pattern's length, faded and inert */
+.btn.past { background: #232323; color: #555; border-color: #121212; }
+.hint.past { color: #4f4f4f; }
+
+/* v6: colours by role. Orange is content (Hits, the Pattern, Track and page chosen); blue is a mode that changes what
+   the hands do (Follow, Chain, Clips only, Push, Fill edit); grey is a setting of the device itself. Without the
+   "roles" class, every option lit is orange, as in v5. */
+.roles .btn.mode.on { background: var(--accent); border-color: var(--accent); color: #1e1e1e; }
+.roles .btn.setting.on { background: #5e5e5e; border-color: #5e5e5e; color: var(--text); }
+
+/* v6: the page's own furniture */
+.compare { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.compare figure { margin: 0; }
+.compare figcaption { color: #9a9a9a; font-size: 12px; margin-top: 6px; }
+.compare img { display: block; max-width: 100%; border: 1px solid #333; }
+.switch { display: inline-flex; gap: 0; margin: 8px 0 16px; }
+.switch button { background: #262626; color: #ccc; border: 1px solid #444; padding: 6px 12px; font: 12px Arial, sans-serif; cursor: pointer; }
+.switch button.on { background: #ffa52e; color: #1e1e1e; border-color: #ffa52e; }
+.changes { max-width: 980px; color: #c8c8c8; font-size: 13px; line-height: 1.5; }
+.changes li { margin: 4px 0; }
+.menu-open { position: relative; display: inline-block; background: #1e1e1e; border: 1px solid #121212; font: 11px Arial, sans-serif; color: #dadada; padding: 4px 0; min-width: 160px; }
+.menu-open div { padding: 3px 10px; }
+.menu-open div.sel { background: #ffa52e; color: #1e1e1e; }
+.menu-open div.sep { border-top: 1px solid #333; margin-top: 3px; padding-top: 6px; }
+
+/* v7: one typeface, Ableton Sans, as Max inside Live ships it (Resources/Max/resources/fonts); the copies in fonts/
+   serve this page only and are never committed. One scale: 10 px for labels, values, buttons and screens; 11 px for
+   the Tracks' names; 13 px bold for titles and FILL. */
+@font-face { font-family: "Ableton Sans"; src: url("fonts/AbletonSans-Regular.otf"); font-weight: 400; }
+@font-face { font-family: "Ableton Sans"; src: url("fonts/AbletonSans-Medium.otf"); font-weight: 500; }
+@font-face { font-family: "Ableton Sans"; src: url("fonts/AbletonSans-Bold.otf"); font-weight: 700; }
+.fam-live { --font: "Ableton Sans", Arial, sans-serif; --fs-s: 10px; --fs-m: 10px; --fs-l: 13px; --fs-xl: 13px; }
+.fam-live .device, .fam-live .btn, .fam-live .menu, .fam-live .label, .fam-live .hint { font-weight: 500; }
+.fam-live .btn.big { font-weight: 700; }
+.fam-live .title-l { font-weight: 700; font-size: 13px; line-height: 18px; }
+.trackname { font-size: 11px; color: var(--text-dim); font-weight: 500; line-height: 14px; }
+.trackname.shown { color: var(--text); font-weight: 700; }
+.fam-live .dialname { font-size: 10px; letter-spacing: 0.3px; }
+
+/* v7: screens. A text that reports a state sits in a dark well with its border, the device's own small displays; the
+   name of a control stays outside, as a label. In Max: a panel #141a1e bordered #0b0e10 under a live.comment. */
+.screen { background: #141a1e; border: 1px solid #0b0e10; border-radius: 2px; color: #a8cfe3; font-size: 10px;
+	font-weight: 500; padding: 0 6px; display: flex; flex-direction: column; justify-content: center; line-height: 13px;
+	white-space: nowrap; overflow: hidden; }
+.screen.value { color: var(--text); }
+.screen.value.kit { color: #7f97a3; font-style: italic; }
+.screen.value.locked { color: var(--accent); font-weight: 700; }
+.screen.news { color: #ffa52e; }
+
+/* v7, after the user's note that the values sat off the middle of their screens: the text's baseline is placed by the
+   screen's top padding (screen() in v7-ui.js), lines 12 px apart, and a value is centred across. */
+.screen { display: block; line-height: 12px; padding-bottom: 0; }
+.screen.value { text-align: center; padding-left: 0; padding-right: 0; }
+
+/* ---- v8: the Overbridge structure in MoDule's colours, readable, native to Max ----
+   MoDule's skin (mdDrums.rcss): surface #26272a, chrome #1b1c1e, display #151618, line #3a3c40, rule #55585e, ink
+   #f2f2f2, accent #6fd1c4 with #10201e on it, mute #ff7a5c. Raised for reading: the device's face is MoDule's surface
+   (not its chrome), wells and screens darker than it, the dim ink brighter (#c3c6cb, not #a7aaaf), lines #4a4c51.
+   Ableton Sans (Max ships it), capitals without letter spacing, live.dial's rings as they are. */
+.fam-v8 {
+	--chrome: #1b1c1e;
+	--bg: #2c2d31;
+	--panel: #1f2023;
+	--panel-beat: #25262a;
+	--line: #4a4c51;
+	--border: #55585e;
+	--text: #f2f2f2;
+	--text-dim: #c3c6cb;
+	--text-faint: #8e9197;
+	--hit: #f2f2f2;
+	--on: #6fd1c4;
+	--on-text: #10201e;
+	--accent: #6fd1c4;
+	--active: transparent;
+	--muted: #ff7a5c;
+	--cond: #c3c6cb;
+	--font: "Ableton Sans", Arial, sans-serif;
+	--fs-s: 10px; --fs-m: 10px; --fs-l: 13px; --fs-xl: 13px;
+	--radius: 2px;
+	font-family: var(--font);
+}
+.fam-v8 .device { box-shadow: 0 0 0 1px #111; }
+.fam-v8 .device .titlebar { background: var(--chrome); color: var(--text-dim); font-size: 10px; font-weight: 700;
+	text-transform: uppercase; border-bottom: 1px solid var(--border); }
+
+/* Labels: capitals, as the machines write them; no letter spacing, which Max cannot set */
+.fam-v8 .label { text-transform: uppercase; font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0; }
+.fam-v8 .dialname { text-transform: uppercase; font-size: 10px; font-weight: 500; color: var(--text-dim); letter-spacing: 0; }
+.fam-v8 .trackname { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+.fam-v8 .trackname.shown, .fam-v8 .dialname.locked { color: var(--text); font-weight: 700; }
+.fam-v8 .title-l { text-transform: uppercase; font-size: 13px; font-weight: 700; line-height: 18px; letter-spacing: 0; }
+.fam-v8 .hint { color: var(--text-faint); font-size: 10px; }
+
+/* Keys: flat, a rule around them; lit, filled with the accent */
+.fam-v8 .btn { background: #34353a; border: 1px solid var(--border); border-radius: 2px; color: var(--text);
+	font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0; }
+.fam-v8 .btn.on { background: var(--on); border-color: var(--on); color: var(--on-text); font-weight: 700; }
+.fam-v8 .btn.big { font-size: 13px; font-weight: 700; }
+.fam-v8 .btn.empty { color: var(--text-faint); background: #2a2b2f; }
+.fam-v8 .btn.queued { box-shadow: inset 0 0 0 2px var(--accent); }
+.fam-v8 .btn.past { background: #26272a; color: #5f6267; border-color: #3a3c40; }
+/* A mode: its key stays a key, an LED along its top lit in the accent (live.text pictures) */
+.fam-v8 .btn.mode.on { background: #34353a; border-color: var(--border); color: var(--text);
+	box-shadow: inset 0 3px 0 var(--accent); font-weight: 700; }
+.fam-v8 .btn.setting.on { background: #34353a; color: var(--text); box-shadow: inset 0 3px 0 #8e9197; }
+/* Track activators: a key with its number while the Track plays, MoDule's coral once muted */
+.fam-v8 .mute { background: #34353a; color: var(--text); border-color: var(--border); }
+.fam-v8 .mute.muted { background: var(--muted); color: #111111; border-color: var(--muted); font-weight: 700; }
+
+.fam-v8 .menu { background: var(--panel); border: 1px solid var(--border); border-radius: 2px; color: var(--text);
+	font-size: 10px; font-weight: 500; text-transform: uppercase; white-space: nowrap; }
+.fam-v8 .menu::after { color: var(--text-dim); }
+.fam-v8 .slider { background: var(--panel); border: 1px solid var(--border); border-radius: 2px; }
+.fam-v8 .slider .val { background: var(--accent); }
+.fam-v8 .rule { background: var(--border); }
+
+/* Screens: MoDule's display colour, framed, text in capitals; a value in ink, a Lock in the accent, the Kit's quieter */
+.fam-v8 .screen { background: #151618; border: 1px solid var(--border); border-radius: 2px; color: var(--text-dim);
+	font-family: var(--font); font-size: 10px; font-weight: 500; text-transform: uppercase; }
+.fam-v8 .screen.value { color: var(--text); font-weight: 700; }
+.fam-v8 .screen.value.kit { color: var(--text-faint); font-weight: 500; font-style: normal; }
+.fam-v8 .screen.value.locked { color: var(--accent); font-weight: 700; }
+.fam-v8 .screen.news { color: var(--accent); }

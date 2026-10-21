@@ -47,6 +47,15 @@ namespace
 		p.swing = static_cast<uint8_t>(MinSwing + _random() % (MaxSwing - MinSwing + 1));
 		if(_random() % 2)
 			p.swingSteps = static_cast<uint64_t>(_random()) | static_cast<uint64_t>(_random()) << 32;
+		// The accent after the swing, for the same reason.
+		if(_random() % 2)
+		{
+			p.accent = static_cast<uint8_t>(_random() % 128);
+			p.accentSteps = static_cast<uint64_t>(_random()) | static_cast<uint64_t>(_random()) << 32;
+		}
+		// The Slide after the Accent.
+		if(_random() % 2)
+			p.slideSteps = static_cast<uint64_t>(_random()) | static_cast<uint64_t>(_random()) << 32;
 		return p;
 	}
 
@@ -137,7 +146,7 @@ namespace
 		words[1] |= 31 << 12;	// 81 %
 		CHECK(refuses(words));
 		words = good;
-		words[1] |= 1 << 18;	// a bit the head does not use
+		words[1] |= 1 << 20;	// a bit the head does not use
 		CHECK(refuses(words));
 		words = good;
 		words[4] |= 1 << 20;	// a step 65
@@ -154,6 +163,76 @@ namespace
 		words[3] = static_cast<int64_t>(DefaultSwingSteps >> 22 & 0x3fffff);
 		words[4] = static_cast<int64_t>(DefaultSwingSteps >> 44);
 		CHECK(refuses(words));
+	}
+
+	// The accent (issue 26): a Pattern without one writes the words it wrote before accents came; one with an amount or
+	// a row sets the head's bit 18, then after the swing row the amount in a word and the row in three of 22 bits.
+	void accentWords()
+	{
+		Pattern p;
+		CHECK(encode(p) == (std::vector<int64_t>{StoreMagic, DefaultLength | DefaultScale << 8}));
+
+		p.accent = 40;
+		CHECK(encode(p) == (std::vector<int64_t>{StoreMagic, DefaultLength | DefaultScale << 8 | 1 << 18, 40, 0, 0, 0}));
+		CHECK(roundTrip(p));
+		p.accent = 0;
+		p.accentSteps = 1ull | 1ull << 63;
+		CHECK(encode(p) == (std::vector<int64_t>{StoreMagic, DefaultLength | DefaultScale << 8 | 1 << 18, 0, 1, 0,
+			1 << 19}));
+		CHECK(roundTrip(p));
+
+		// With a swing row of its own: the swing's words first.
+		p.accent = 127;
+		p.swing = 66;
+		p.swingSteps = 0;
+		std::vector<int64_t> words = encode(p);
+		CHECK(words.size() == 9 && words[2] == 0 && words[3] == 0 && words[4] == 0 && words[5] == 127);
+		CHECK(roundTrip(p));
+
+		Pattern target;
+		target.length = 33;
+		const auto refuses = [&](const std::vector<int64_t>& _words)
+		{
+			return !decode(_words.data(), _words.size(), target) && target.length == 33;
+		};
+		const std::vector<int64_t> good = encode(p);
+		words = good;
+		words[5] = 128;	// an amount past 127
+		CHECK(refuses(words));
+		words = good;
+		words[8] |= 1 << 20;	// a step 65
+		CHECK(refuses(words));
+		words = good;
+		words.resize(8);	// the row cut short
+		CHECK(refuses(words));
+		// The bit with neither an amount nor a row is not what encode writes.
+		const std::vector<int64_t> empty{StoreMagic, DefaultLength | DefaultScale << 8 | 1 << 18, 0, 0, 0, 0};
+		CHECK(refuses(empty));
+	}
+
+	// The Slide row (issue 26): none writes the words of before; a row sets the head's bit 19 and follows the Accent's
+	// words in three words of 22 bits.
+	void slideWords()
+	{
+		Pattern p;
+		p.slideSteps = 1ull << 2;
+		CHECK(encode(p) == (std::vector<int64_t>{StoreMagic, DefaultLength | DefaultScale << 8 | 1 << 19, 4, 0, 0}));
+		CHECK(roundTrip(p));
+		p.accent = 9;
+		std::vector<int64_t> words = encode(p);
+		CHECK(words.size() == 9 && words[2] == 9 && words[6] == 4);
+		CHECK(roundTrip(p));
+
+		Pattern target;
+		target.length = 33;
+		const auto refuses = [&](const std::vector<int64_t>& _words)
+		{
+			return !decode(_words.data(), _words.size(), target) && target.length == 33;
+		};
+		words.resize(8);	// the row cut short
+		CHECK(refuses(words));
+		const std::vector<int64_t> empty{StoreMagic, DefaultLength | DefaultScale << 8 | 1 << 19, 0, 0, 0};
+		CHECK(refuses(empty));	// the bit without a step in the row
 	}
 
 	void refused()
@@ -494,6 +573,8 @@ int main()
 	emptyAndRandom();
 	heaviest();
 	swingWords();
+	accentWords();
+	slideWords();
 	refused();
 	editWrites();
 	undoneBeforeWrite();

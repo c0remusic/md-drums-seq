@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v8</title>
+<link rel="stylesheet" href="v8-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v8</h1>
+	<p class="note">La disposition de la v7, la structure de la variante Overbridge (écrans, anneaux, touches avec une LED)
+		et les couleurs de MoDule, contraste relevé après « très sombre, pas très lisible ». Seulement ce que Max construit
+		sans JavaScript, vérifié dans les références des objets live.* livrées avec Live.</p>
+
+	<h2>Ce qui change depuis la v7</h2>
+	<ul class="changes">
+		<li><b>Couleurs de MoDule</b>, lues dans son skin : face #2c2d31 (la surface de MoDule, un peu relevée), puits
+			#1f2023, écrans #151618, encre #f2f2f2, un seul accent turquoise #6fd1c4, le corail #ff7a5c d'une Track coupée.
+			Les Hits sont à l'encre, blancs, plus clairs avec la vélocité, comme le contenu dans MoDule.</li>
+		<li><b>Contraste relevé</b> par rapport à la variante sombre : face plus claire que les puits et les écrans,
+			encre atténuée #c3c6cb au lieu de #a7aaaf, filets #55585e.</li>
+		<li><b>Structure Overbridge</b> : étiquettes et écrans en capitales, touches plates, un mode allumé signalé par une
+			LED turquoise en haut de sa touche (live.text avec une image SVG), anneaux des encodeurs.</li>
+		<li><b>Contraintes de Max</b> : Ableton Sans partout, puisque Inter n'est pas installée ; capitales sans
+			espacement, faute d'attribut ; anneaux à l'épaisseur de live.dial ; couleurs fixes, le device ne suit plus le
+			thème de Live.</li>
+	</ul>
+
+	<h2>Bande</h2>
+	<div class="fam-v8" id="strip"></div>
+	<h2>Fenêtre d'édition</h2>
+	<div class="fam-v8" id="window"></div>
+</div>
+<script src="v8-ui.js"></script>
+<script>
+	// Canvases take a font once it has loaded
+	Promise.all([document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMock8.strip(document.getElementById("strip"));
+			mdSeqMock8.editWindow(document.getElementById("window"));
+		});
+</script>
+</body>
+</html>

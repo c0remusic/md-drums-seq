@@ -14,16 +14,30 @@ namespace mdseq
 {
 	namespace
 	{
+		// A ratchet's notes, in that order of their ids: its 24 Locks, the Accent, the Slide's clocks, its 24 targets,
+		// its clocks past 127, and the Hit.
+		constexpr int AccentParam = AccentNote - FirstLockNote;
+		constexpr int SlideParam = SlideNote - FirstLockNote;
+		constexpr int FirstTargetParam = FirstSlideTargetNote - FirstLockNote;
+		constexpr int LongSlideParam = LongSlideNote - FirstLockNote;
+		constexpr int NotesPerRatchet = LongSlideParam + 2;
+		constexpr int SlideNotes = LongSlideParam - AccentParam;	// on a step's last ratchet only
+
 		// Worst case of the planned events: step n still sounding, n+1 planned, n+2 being planned, each with 16 Tracks
-		// of 8 ratchets of a Hit and 24 Locks, a note-off for each; and step n-1, whose last note-offs a swing of 80 %
-		// and a micro-timing of +23 put 2.56 steps after its place, past the start of n+1.
-		constexpr size_t StepCapacity = TrackCount * MaxRatchets * (LockCount + 1) * 2;
+		// of 8 ratchets of a Hit, 24 Locks and an Accent, and a Slide on the last, a note-off for each; and step n-1,
+		// whose last note-offs a swing of 80 % and a micro-timing of +23 put 2.56 steps after its place, past the start
+		// of n+1.
+		constexpr size_t StepCapacity = TrackCount * (MaxRatchets * (LockCount + 2) + SlideNotes) * 2;
 		constexpr size_t QueueCapacity = 4 * StepCapacity;
 
 		// Events stand in units of a 42nd of a tick, from the song's start: at every scale a step (60 to 960 ticks)
 		// and its 840ths (ratchets' shares, micro-timing's 24ths) are whole numbers of them, so that events compare
 		// exactly, and a Pattern that follows another at the end of its Pass starts on a whole unit.
 		constexpr int64_t UnitsPerTick = 42;
+		constexpr int64_t UnitsPerClock = static_cast<int64_t>(TicksPerClock) * UnitsPerTick;	// 24 to a quarter note
+		// The longest Slide, a Pattern's length at the slowest scale and two steps more of swing and micro-timing, fits
+		// note 114's velocity.
+		static_assert((MaxSteps + 2) * ScaleTicks[0] / TicksPerClock < 127.0 * 127.0, "a Slide's clocks fit two notes");
 
 		// How far from where playing on would bring it a look may find Live and still be playing on (see jumped).
 		constexpr double JumpSlackTicks = TicksPerStep / 4.0;
@@ -41,17 +55,19 @@ namespace mdseq
 		return static_cast<uint8_t>(std::max((2 * scaled + whole) / (2 * whole), 1));
 	}
 
-	static_assert(MaxSteps <= 127 && PatternCount <= 127, "a Playhead keeps each of its values in a signed byte");
+	static_assert(MaxSteps <= 127 && PatternCount <= 127 && ChainLength <= 127,
+		"a Playhead keeps each of its values in a signed byte");
 
 	Playhead playhead(const Wake& _wake)
 	{
-		return {_wake.step, _wake.pattern, _wake.queued};
+		return {_wake.step, _wake.pattern, _wake.queued, _wake.chain};
 	}
 
 	uint32_t packPlayhead(const Playhead& _playhead)
 	{
 		const auto byte = [](const int _value) { return static_cast<uint32_t>(_value) & 0xffu; };
-		return byte(_playhead.step) | (byte(_playhead.pattern) << 8) | (byte(_playhead.queued) << 16);
+		return byte(_playhead.step) | (byte(_playhead.pattern) << 8) | (byte(_playhead.queued) << 16) |
+			(byte(_playhead.chain) << 24);
 	}
 
 	Playhead unpackPlayhead(const uint32_t _word)
@@ -61,20 +77,21 @@ namespace mdseq
 			const auto b = static_cast<int>((_word >> _shift) & 0xffu);
 			return b < 128 ? b : b - 256;
 		};
-		return {value(0), value(8), value(16)};
+		return {value(0), value(8), value(16), value(24)};
 	}
 
 	Sequencer::Sequencer(const uint64_t _seedSource) : m_bank(PatternCount), m_seedSource(_seedSource)
 	{
 		m_queue.reserve(QueueCapacity);
 		m_staged.reserve(StepCapacity);
-		m_out.reserve(QueueCapacity + TrackCount * (LockCount + 1));
+		m_out.reserve(QueueCapacity + TrackCount * NotesPerRatchet);
 		applyScale();
 	}
 
 	Wake Sequencer::wake(const Transport& _now)
 	{
 		m_out.clear();
+		m_started = m_jumped = m_stopped = false;
 
 		if(!_now.playing)
 		{
@@ -82,8 +99,17 @@ namespace mdseq
 			{
 				silence(_now.ticks);
 				m_queue.clear();
+				m_sent = 0;
 				m_playing = false;
-				// A Pattern waiting for the end of the Pass is the one played next.
+				m_stopped = true;
+				// A Pattern waiting for the end of the Pass is the one played next. A chain's is the place after the
+				// Pass played: the planning may have begun the next Pass, and queued the place after that.
+				if(m_chainLength > 0)
+				{
+					m_chainPos = playedAt(m_lastTicks).chain;
+					m_chainNext = (m_chainPos + 1) % m_chainLength;
+					m_queued = m_chain[m_chainNext];
+				}
 				if(m_queued >= 0)
 					setCurrent(m_queued);
 			}
@@ -119,8 +145,23 @@ namespace mdseq
 			m_fill = fill;
 			return true;
 		}
+		if(_in.kind == Input::Kind::ChainEntry)
+		{
+			if(_in.step < 0 || _in.step >= ChainLength || _in.value < 0 || _in.value >= PatternCount ||
+				m_chain[_in.step] == _in.value)
+				return false;
+			m_chain[_in.step] = static_cast<int8_t>(_in.value);
+			return true;
+		}
+		if(_in.kind == Input::Kind::SetChain)
+			return setChain(_in.value);
 		if(_in.kind == Input::Kind::SetPattern)
-			return choose(_in.value);
+		{
+			// Chosen by hand: a chain playing ends.
+			const bool ended = m_chainLength > 0;
+			m_chainLength = 0;
+			return choose(_in.value) || ended;
+		}
 
 		if(_in.pattern < 0 || _in.pattern >= PatternCount)
 			return false;
@@ -217,6 +258,43 @@ namespace mdseq
 		return true;
 	}
 
+	bool Sequencer::setChain(const int _length)
+	{
+		const int length = _length >= 2 && _length <= ChainLength ? _length : 0;
+		if(length == 0 && m_chainLength == 0)
+			return false;
+		m_chainLength = length;
+		m_chainPos = -1;
+		m_chainNext = length > 0 ? 0 : -1;
+		// Stopped, Live's start finds its place. Playing, it starts at the end of the Pass, at once if its first
+		// Pattern is the one planned: its next Pattern queued as a Pattern chosen is, the step planned ahead planned
+		// again if it begins the next Pass.
+		if(length == 0 || !m_playing)
+			return true;
+		chainPass();
+		choose(m_chain[m_chainNext]);
+		return true;
+	}
+
+	void Sequencer::chainPass()
+	{
+		if(m_chainLength == 0)
+			return;
+		if(m_chainNext >= 0 && m_chain[m_chainNext] == m_current)
+			m_chainPos = m_chainNext;
+		else if(m_chainPos >= 0 && m_chain[m_chainPos] != m_current)
+			m_chainPos = -1;
+		m_chainNext = (m_chainPos + 1) % m_chainLength;
+	}
+
+	int Sequencer::chainQueued() const
+	{
+		if(m_chainNext < 0)
+			return -1;
+		const int next = m_chain[m_chainNext];
+		return next == m_current ? -1 : next;
+	}
+
 	void Sequencer::setCurrent(const int _pattern)
 	{
 		m_current = _pattern;
@@ -228,10 +306,12 @@ namespace mdseq
 	{
 		// The step planned ahead's events, but for the Tracks kept, and the Conditions' memory from before it.
 		const int64_t planned = m_nextToPlan - 1;
-		m_queue.erase(std::remove_if(m_queue.begin(), m_queue.end(), [&](const Planned& _p)
+		const auto dropped = [&](const Planned& _p)
 		{
 			return _p.step == planned && _p.pattern == m_current && !(_keep & 1u << _p.track);
-		}), m_queue.end());
+		};
+		const auto unsent = m_queue.begin() + static_cast<std::ptrdiff_t>(m_sent);
+		m_queue.erase(std::remove_if(unsent, m_queue.end(), dropped), m_queue.end());
 		m_memory = m_memoryBeforePlanned;
 	}
 
@@ -335,8 +415,12 @@ namespace mdseq
 	{
 		// A jump ends the notes sounding, and so does a new scale, whose note-offs stood on the old grid; a start has
 		// none.
+		m_started = _why == Restart::Start;
+		m_jumped = _why == Restart::Jump;
+		m_jumpedFrom = m_lastTicks;
 		silence(_now.ticks);
 		m_queue.clear();
+		m_sent = 0;
 
 		if(_why == Restart::Start)
 		{
@@ -344,10 +428,20 @@ namespace mdseq
 			m_anchor = 0.0;
 			m_lastPlannedPosition = -1;
 			m_lastPlannedPass = 0;
-			m_planned[0] = m_planned[1] = {-Never, m_current, 0, 1};
+			m_planned[0] = m_planned[1] = {-Never, m_current, 0, 1, -1};
 			// A start draws afresh: its own seed, and Conditions that remember nothing.
 			m_startSeed = rendering() ? m_givenSeed : passSeed(m_seedSource, ++m_starts);
 			m_memory = {};
+			// A chain goes on from the first place holding the Pattern played, from the one Live stopped before (the
+			// first if none holds it).
+			if(m_chainLength > 0 && (m_chainNext < 0 || m_chain[m_chainNext] != m_current))
+			{
+				const int from = std::max(m_chainNext, 0);
+				m_chainNext = -1;
+				for(int i = 0; i < m_chainLength && m_chainNext < 0; ++i)
+					if(m_chain[(from + i) % m_chainLength] == m_current)
+						m_chainNext = (from + i) % m_chainLength;
+			}
 		}
 
 		// The step Live lands in goes on in the Pass played: a Pattern queued waits for that Pass's end.
@@ -380,6 +474,13 @@ namespace mdseq
 			m_lastPlannedPosition = position(_why == Restart::Rescale ? stepAt(_now.ticks) : was);
 			if(within)
 				--m_lastPlannedPass;
+			// The chain goes back to the Pass played too: planned again, it keeps its place; a new Pass takes the next.
+			if(m_chainLength > 0)
+			{
+				m_chainPos = played.chain;
+				m_chainNext = within ? played.chain : (played.chain + 1) % m_chainLength;
+				m_queued = chainQueued();
+			}
 		}
 
 		m_playing = true;
@@ -410,13 +511,19 @@ namespace mdseq
 		const int pos = position(_step);
 		m_positionBeforePlanned = m_lastPlannedPosition;
 		m_passBeforePlanned = m_lastPlannedPass;
-		const uint32_t pass = m_lastPlannedPosition < 0 ? 1
-			: pos <= m_lastPlannedPosition ? m_lastPlannedPass + 1
-			: m_lastPlannedPass;
+		const bool begins = m_lastPlannedPosition < 0 || pos <= m_lastPlannedPosition;
+		const uint32_t pass = m_lastPlannedPosition < 0 ? 1 : begins ? m_lastPlannedPass + 1 : m_lastPlannedPass;
 		m_lastPlannedPosition = pos;
 		m_lastPlannedPass = pass;
+		// A chain queues its next Pattern as the Pass begins, so that it follows at the Pass's end whatever its
+		// length: a Pass of one step is one step.
+		if(begins && m_chainLength > 0)
+		{
+			chainPass();
+			m_queued = chainQueued();
+		}
 		m_planned[0] = m_planned[1];
-		m_planned[1] = {tickOfStep(_step), m_current, pos, pass};
+		m_planned[1] = {tickOfStep(_step), m_current, pos, pass, m_chainLength > 0 ? m_chainPos : -1};
 
 		m_memoryBeforePlanned = m_memory;
 		m_drawOfPlanned = {pass, passSeed(m_startSeed, pass), m_fill};
@@ -427,10 +534,9 @@ namespace mdseq
 	{
 		const Pattern& pattern = m_bank[m_current];
 		const int pos = position(_step);
-		const int64_t grid = std::llround(m_anchor * UnitsPerTick) + _step * m_stepUnits;
+		const int64_t grid = gridOf(_step);
 		const auto earliest = std::isinf(_earliest) ? (std::numeric_limits<int64_t>::min)()
 			: static_cast<int64_t>(std::ceil(_earliest * UnitsPerTick));
-		const int64_t swing = pattern.swings(pos) ? swingSubticks(pattern.swing) : 0;
 
 		// The Tracks that play the step, drawn from 1 to 16 (NEI reads the Track before).
 		std::array<Playing, TrackCount> playing;
@@ -456,7 +562,7 @@ namespace mdseq
 			// have sent before go at once; on a step begun before it (a jump inside it), the ratchets before it are
 			// dropped.
 			const int64_t share = SubticksPerStep / step.ratchets * m_subUnits;
-			int64_t begin = grid + (step.micro * SubticksPerMicro + swing) * m_subUnits;
+			int64_t begin = groupBegin(_step, t);
 			int first = 0;
 			if(grid >= earliest)
 				begin = std::max(begin, earliest);
@@ -470,12 +576,12 @@ namespace mdseq
 		}
 
 		// The events in their order, without a sort: from one unit where a ratchet begins or ends to the next, the
-		// note-offs of the ratchets ending, Track by Track, then the notes of those beginning. A step holds up to 6400
-		// events and the queue three steps of them: an insertion each took 9.6 ms in the heaviest wake, a sort 0.38 ms
-		// a step. Each note of the step has its id in a block of them, by Track, ratchet and parameter.
+		// note-offs of the ratchets ending, Track by Track, then the notes of those beginning. A step holds up to 7488
+		// events and the queue three steps of them: an insertion each took 9.6 ms in the heaviest wake of 6400, a sort
+		// 0.38 ms a step. Each note of the step has its id in a block of them, by Track, ratchet and parameter.
 		m_staged.clear();
 		const uint64_t notes = m_nextNote;
-		m_nextNote += TrackCount * MaxRatchets * (LockCount + 1);
+		m_nextNote += TrackCount * MaxRatchets * NotesPerRatchet;
 		for(;;)
 		{
 			int64_t k = NoUnit;
@@ -503,8 +609,11 @@ namespace mdseq
 		}
 		assert(std::is_sorted(m_staged.begin(), m_staged.end(), before));
 
-		// One merge for the step, from the back, so that the queue's events stay before the staged ones they equal,
-		// as an insertion after them would leave them.
+		// The events sent leave the queue once a step, not at each wake. Then one merge for the step, from the back,
+		// so that the queue's events stay before the staged ones they equal, as an insertion after them would leave
+		// them.
+		m_queue.erase(m_queue.begin(), m_queue.begin() + static_cast<std::ptrdiff_t>(m_sent));
+		m_sent = 0;
 		const size_t queued = m_queue.size();
 		assert(queued + m_staged.size() <= m_queue.capacity());
 		m_queue.resize(queued + m_staged.size());
@@ -523,33 +632,70 @@ namespace mdseq
 	void Sequencer::stageRatchet(const int64_t _step, const int64_t _at, const int _track, const int _ratchet,
 		const uint64_t _notes, const bool _begins)
 	{
-		// A ratchet is the Hit with each of its Locks, a note each that lasts the ratchet's share of the step (MD
-		// Drums' ADR 0003: a Lock goes with the Hit just before it). It begins with the Hit, then the Locks; it ends
-		// with the Locks, then the Hit, in rankOf's order.
-		const Step& step = m_bank[m_current].steps[_track][position(_step)];
+		// A ratchet is the Hit with each of its Locks, on a step of the Accent row the Accent, and on a step of the Slide
+		// row the Slide with the last ratchet, a note each that lasts the ratchet's share of the step (MD Drums' ADR
+		// 0003: a Lock, the Accent and the Slide go with the Hit just before them). It begins with the Hit, then the
+		// others; it ends with the others, then the Hit, in rankOf's order.
+		const Pattern& played = m_bank[m_current];
+		const int at = position(_step);
+		const Step& step = played.steps[_track][at];
 		const auto track = static_cast<uint8_t>(_track);
 		const auto pattern = static_cast<uint8_t>(m_current);
-		const uint64_t notes = _notes + static_cast<uint64_t>((_track * MaxRatchets + _ratchet) * (LockCount + 1));
+		const uint64_t notes = _notes + static_cast<uint64_t>((_track * MaxRatchets + _ratchet) * NotesPerRatchet);
+		const uint64_t hitNote = notes + NotesPerRatchet - 1;
 		const auto stage = [&](const Kind _kind, const uint8_t _param, const uint8_t _velocity, const uint64_t _note)
 		{
 			assert(m_staged.size() < m_staged.capacity());
 			m_staged.push_back({_at, _step, rankOf(_kind, track, _param), _kind, track, _param, _velocity, pattern,
 				_note});
 		};
+		const auto note = [&](const int _param, const uint8_t _velocity)
+		{
+			const auto param = static_cast<uint8_t>(_param);
+			stage(_begins ? Kind::Lock : Kind::Off, param, _begins ? _velocity : 0, notes + param);
+		};
 
 		if(_begins)
-			stage(Kind::Hit, HitNote, ratchetVelocity(step.velocity, step.curve, _ratchet, step.ratchets),
-				notes + LockCount);
+			stage(Kind::Hit, HitNote, ratchetVelocity(step.velocity, step.curve, _ratchet, step.ratchets), hitNote);
 		for(int p = 0; p < LockCount; ++p)
+			if(step.locks[p] != NoLock)
+				note(p, lockVelocity(step.locks[p]));
+		if(played.inAccentRow(at))
+			note(AccentParam, lockVelocity(played.accent));
+		if(played.inSlideRow(at) && _ratchet == step.ratchets - 1)
 		{
-			const auto param = static_cast<uint8_t>(p);
-			if(step.locks[p] == NoLock)
-				continue;
-			const uint8_t velocity = _begins ? lockVelocity(step.locks[p]) : 0;
-			stage(_begins ? Kind::Lock : Kind::Off, param, velocity, notes + param);
+			// The Track's next Hit in the Pattern, whatever its Condition, around its end; the Hit itself when it is the
+			// only one. The clocks from this ratchet to it as both play, at least one, past 127 in a second note.
+			int distance = 1;
+			while(distance < played.length && !played.steps[_track][position(_step + distance)].hit)
+				++distance;
+			const Step& next = played.steps[_track][position(_step + distance)];
+			const int64_t from = groupBegin(_step, _track) + SubticksPerStep / step.ratchets * m_subUnits * _ratchet;
+			const int64_t clocks = std::max<int64_t>(
+				(groupBegin(_step + distance, _track) - from + UnitsPerClock / 2) / UnitsPerClock, 1);
+			const auto longer = static_cast<int>((clocks - 1) / 127);
+			note(SlideParam, static_cast<uint8_t>(clocks - 127 * longer));
+			for(int p = 0; p < LockCount; ++p)
+				if(step.locks[p] != NoLock && next.locks[p] != NoLock)
+					note(FirstTargetParam + p, lockVelocity(next.locks[p]));
+			if(longer > 0)
+				note(LongSlideParam, static_cast<uint8_t>(longer));
 		}
 		if(!_begins)
-			stage(Kind::Off, HitNote, 0, notes + LockCount);
+			stage(Kind::Off, HitNote, 0, hitNote);
+	}
+
+	int64_t Sequencer::gridOf(const int64_t _step) const
+	{
+		return std::llround(m_anchor * UnitsPerTick) + _step * m_stepUnits;
+	}
+
+	int64_t Sequencer::groupBegin(const int64_t _step, const int _track) const
+	{
+		const Pattern& pattern = m_bank[m_current];
+		const int pos = position(_step);
+		const int64_t swing = pattern.swings(pos) ? swingSubticks(pattern.swing) : 0;
+		return gridOf(_step) + (pattern.steps[_track][pos].micro * SubticksPerMicro + swing) * m_subUnits;
 	}
 
 	double Sequencer::tickOf(const int64_t _at) const
@@ -579,10 +725,8 @@ namespace mdseq
 
 	void Sequencer::emitDue(const double _now)
 	{
-		auto it = m_queue.begin();
-		for(; it != m_queue.end() && tickOf(it->at) <= _now; ++it)
-			emit(*it);
-		m_queue.erase(m_queue.begin(), it);
+		for(; m_sent < m_queue.size() && tickOf(m_queue[m_sent].at) <= _now; ++m_sent)
+			emit(m_queue[m_sent]);
 	}
 
 	void Sequencer::emit(const Planned& _event)
@@ -625,7 +769,7 @@ namespace mdseq
 	{
 		for(uint8_t t = 0; t < TrackCount; ++t)
 		{
-			for(uint8_t p = 0; p < LockCount; ++p)
+			for(uint8_t p = 0; p < ParamCount; ++p)
 			{
 				if(!m_lockSounding[t][p])
 					continue;
@@ -654,13 +798,23 @@ namespace mdseq
 	Wake Sequencer::result(const double _ticks) const
 	{
 		Wake wake{m_out.data(), m_out.data() + m_out.size(), Never, -1, 0, m_current, m_queued};
+		wake.started = m_started;
+		wake.jumped = m_jumped;
+		wake.jumpedFrom = m_jumpedFrom;
+		wake.stopped = m_stopped;
 		if(!m_playing)
+		{
+			// The place a start goes on from, when it holds the Pattern played.
+			if(m_chainLength > 0 && m_chainNext >= 0 && m_chain[m_chainNext] == m_current)
+				wake.chain = m_chainNext;
 			return wake;
+		}
 
 		const StepPlanned& played = playedAt(_ticks);
 		wake.step = played.position;
 		wake.pass = played.pass;
 		wake.pattern = played.pattern;
+		wake.chain = m_chainLength > 0 ? played.chain : -1;
 		// The Pass's last step plays, and the next Pass's first is planned from the Pattern queued, which the planning
 		// no longer holds as queued: it still follows at the end of this Pass.
 		if(m_planned[1].tick > _ticks && m_planned[1].pattern != played.pattern)
@@ -668,8 +822,8 @@ namespace mdseq
 
 		if(m_nextToPlan < m_planLimit)
 			wake.next = tickOfStep(m_nextToPlan - 1);
-		if(!m_queue.empty())
-			wake.next = std::min(wake.next, tickOf(m_queue.front().at));
+		if(m_sent < m_queue.size())
+			wake.next = std::min(wake.next, tickOf(m_queue[m_sent].at));
 		return wake;
 	}
 }

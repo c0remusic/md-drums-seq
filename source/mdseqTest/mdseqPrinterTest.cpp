@@ -33,6 +33,7 @@ namespace
 			double length = 0.0;
 			std::string name;
 			std::vector<PrintedNote> notes;
+			bool loop = true;
 		};
 
 		struct LiveTrack
@@ -128,6 +129,17 @@ namespace
 			return view;
 		}
 
+		// The other tracks blank, the scene not read: a print's second step must do without them.
+		SetView readTracks(const std::vector<int>& _indices) override
+		{
+			SetView view = read();
+			for(size_t i = 0; i < view.tracks.size(); ++i)
+				if(std::find(_indices.begin(), _indices.end(), static_cast<int>(i)) == _indices.end())
+					view.tracks[i] = {};
+			view.selectedScene = -1;
+			return view;
+		}
+
 		bool hasClip(const int _index, const int _scene) override
 		{
 			++reads;
@@ -203,14 +215,14 @@ namespace
 		}
 
 		bool createClip(const int _index, const int _scene, const double _length, const std::string& _name,
-			const std::vector<PrintedNote>& _notes) override
+			const std::vector<PrintedNote>& _notes, const bool _loop) override
 		{
 			if(!valid(_index) || _scene < 0 || _scene >= scenes || track(_index).clips.count(_scene))
 				return false;
 			if(std::find(refuseClipsOn.begin(), refuseClipsOn.end(), shown(static_cast<size_t>(_index))) !=
 				refuseClipsOn.end())
 				return false;
-			track(_index).clips[_scene] = {_length, _name, _notes};
+			track(_index).clips[_scene] = {_length, _name, _notes, _loop};
 			++writes;
 			return true;
 		}
@@ -317,7 +329,7 @@ namespace
 		return shown;
 	}
 
-	const char* const Mute = "Mute the device or the clips, or each Hit plays twice.";
+	const char* const Mute = "Set the device to Clips, or each Hit plays twice.";
 	const char* const TwoOnSeven = " Track 07: two tracks on 7-MD Drums, printed on Hats.";
 
 	// A clip's name as a print gives it: "P01 ×4" for the first Pattern over four Passes.
@@ -720,9 +732,63 @@ namespace
 	}
 }
 
+namespace
+{
+	// A take as the Journal records it: Hits of Track 1 at ticks 0 and 2400, of Track 7 at 480, a step long each, the
+	// transport stopped after two bars.
+	Take aTake()
+	{
+		Journal journal(64);
+		journal.start(0.0);
+		const auto hit = [&](const double _ticks, const int _track, const int _velocity)
+		{
+			const auto key = static_cast<uint8_t>(FirstHitNote + _track);
+			journal.note(_ticks, {static_cast<uint8_t>(0x90 | _track), key, static_cast<uint8_t>(_velocity)});
+			journal.note(_ticks + 120.0, {static_cast<uint8_t>(0x80 | _track), key, 0});
+		};
+		hit(0.0, 0, 100);
+		hit(480.0, 6, 70);
+		hit(2400.0, 0, 90);
+		journal.stop(3840.0);
+		return journal.take();
+	}
+
+	// A capture (issue 23): a take's clips placed as a print's, named "Take n" from 1 and not looping; the status says
+	// so. A take without a note is refused, and numbers none.
+	void captures()
+	{
+		FakeSet set = aSet();
+		Printer printer(set);
+		const Take take = aTake();
+		const Printed clips = takeClips(take);
+		CHECK(clips.trackCount() == 2);
+		CHECK(follow(printer, set, printer.capture(Take{})).last() ==
+			"Nothing to capture: no note played since the transport last started");
+		Take offs;
+		offs.entries.push_back({0.0, {0x80, FirstHitNote, 0}});
+		CHECK(follow(printer, set, printer.capture(offs)).last() == "Nothing to capture: the take has no note");
+
+		const Shown shown = follow(printer, set, printer.capture(take));
+		CHECK(shown.statuses.front() == "Capturing...");
+		CHECK(shown.last() == std::string("Captured Take 1 in scene 4: 2 clips, 1 track added. ") + Mute + TwoOnSeven);
+		const FakeSet::Clip* one = set.clip("MD 01", 3);
+		CHECK(one && one->name == "Take 1" && !one->loop && one->length == clips.length &&
+			one->notes == clips.tracks[0]);
+		const FakeSet::Clip* seven = set.clip("Hats", 3);
+		CHECK(seven && !seven->loop && seven->notes == clips.tracks[6]);
+
+		// A print loops.
+		follow(printer, set, printer.print(hitsOn({0}), 1, 2, 1, false));
+		CHECK(set.clip("MD 01", 4) && set.clip("MD 01", 4)->loop && set.clip("MD 01", 4)->name == "P02 \xC3\x97" "2");
+		// The next capture is the second.
+		CHECK(follow(printer, set, printer.capture(take)).last().rfind("Captured Take 2", 0) == 0);
+	}
+}
+
 int main()
 {
 	setvbuf(stdout, nullptr, _IONBF, 0);
+	captures();
 	channels();
 	instrumentRenamed();
 	notes();

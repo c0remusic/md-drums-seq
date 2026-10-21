@@ -29,6 +29,9 @@ namespace mdseq
 			std::snprintf(text, sizeof(text), "P%02d \xC3\x97%d", _pattern + 1, _passes);
 			return text;
 		}
+
+		// After a print or a capture made: the clips and the device both play MD Drums (issue 23).
+		constexpr const char* Twice = "Set the device to Clips, or each Hit plays twice.";
 	}
 
 	int channelTrack(const std::string& _channel)
@@ -67,19 +70,46 @@ namespace mdseq
 	{
 		if(m_printing)
 			return {};
-		m_pattern = _index;
-		m_passes = std::clamp(_passes, 1, MaxPasses);
-		m_printed = printPattern(_pattern, m_passes, _seed, _fill);
-		char text[64];
+		static constexpr Words Print{"Printing...", "printing", "Printed", "Not printed"};
+		const int passes = std::clamp(_passes, 1, MaxPasses);
+		m_printed = printPattern(_pattern, passes, _seed, _fill);
 		if(m_printed.trackCount() == 0)
 		{
-			std::snprintf(text, sizeof(text), "Nothing to print: P%02d has no Hit", m_pattern + 1);
+			char text[64];
+			std::snprintf(text, sizeof(text), "Nothing to print: P%02d has no Hit", _index + 1);
 			return {text};
 		}
+		m_clipName = printedClipName(_index, passes);
+		m_loop = true;
+		m_words = &Print;
+		return begin();
+	}
 
+	Printer::Report Printer::capture(const Take& _take)
+	{
+		if(m_printing)
+			return {};
+		static constexpr Words Capture{"Capturing...", "capturing", "Captured", "Not captured"};
+		if(_take.entries.empty())
+			return {"Nothing to capture: no note played since the transport last started"};
+		Printed clips = takeClips(_take);
+		if(clips.trackCount() == 0)
+			return {"Nothing to capture: the take has no note"};
+		m_printed = std::move(clips);
+		m_clipName = "Take " + std::to_string(m_takes + 1);
+		m_loop = false;
+		m_words = &Capture;
+		const Report report = begin();
+		if(report.again)
+			++m_takes;
+		return report;
+	}
+
+	Printer::Report Printer::begin()
+	{
 		const SetView view = m_set.read();
 		if(view.deviceTrack < 0 || view.deviceTrack >= static_cast<int>(view.tracks.size()))
-			return {"Not printed: the device must sit on a track, not in a rack"};
+			return {std::string(m_words->notDone) + ": the device must sit on a track, not in a rack"};
 		m_warnings.clear();
 		m_unrouted.clear();
 		m_attempts = 0;
@@ -105,9 +135,9 @@ namespace mdseq
 				m_warnings.push_back(name + " could not be sent to " + m_deviceName);
 		}
 		if(!m_refusal.empty() && m_created.empty())
-			return {"Not printed: " + m_refusal};
+			return {std::string(m_words->notDone) + ": " + m_refusal};
 		m_printing = true;
-		return {"Printing...", true};
+		return {m_words->doing, true};
 	}
 
 	Printer::Report Printer::resume()
@@ -149,7 +179,11 @@ namespace mdseq
 
 		// A clip goes to the index planned only while the track planned is still there: a track moved, inserted or
 		// deleted since the set was read puts another track at that index, which must not get the clip.
-		const SetView view = m_set.read();
+		std::vector<int> planned;
+		for(const int index : m_trackOf)
+			if(index >= 0)
+				planned.push_back(index);
+		const SetView view = m_set.readTracks(planned);
 		std::string moved;
 		for(int track = 0; track < TrackCount; ++track)
 			if(m_trackOf[static_cast<size_t>(track)] >= 0 && !inPlace(view, track))
@@ -159,11 +193,10 @@ namespace mdseq
 				unrouted(c);
 		m_unrouted.clear();
 		if(!moved.empty())
-			return stop("tracks moved while printing: " + moved);
+			return stop(std::string("tracks moved while ") + m_words->during + ": " + moved);
 
 		if(m_newScene)
 			m_set.createScene(m_scene);
-		const std::string clipName = printedClipName(m_pattern, m_passes);
 		int clips = 0;
 		std::vector<int> refused;
 		for(int track = 0; track < TrackCount; ++track)
@@ -172,7 +205,7 @@ namespace mdseq
 			if(index < 0)
 				continue;
 			const std::vector<PrintedNote>& notes = m_printed.tracks[static_cast<size_t>(track)];
-			if(m_set.createClip(index, m_scene, m_printed.length, clipName, notes))
+			if(m_set.createClip(index, m_scene, m_printed.length, m_clipName, notes, m_loop))
 				++clips;
 			else
 				refused.push_back(track);
@@ -265,7 +298,7 @@ namespace mdseq
 	std::string Printer::notPrintedStatus(const std::string& _why) const
 	{
 		// The tracks created stay in the set, each an entry in Live's undo history: the status line counts them.
-		std::string status = "Not printed: " + _why + ".";
+		std::string status = std::string(m_words->notDone) + ": " + _why + ".";
 		const std::string added = tracksAdded();
 		if(!added.empty())
 			status += " " + added + ".";
@@ -302,13 +335,13 @@ namespace mdseq
 			return notPrintedStatus(why);
 		}
 
-		std::snprintf(text, sizeof(text), "Printed %s in scene %d%s: %d clip%s",
-			printedClipName(m_pattern, m_passes).c_str(), m_scene + 1, sceneMark, _clips, _clips > 1 ? "s" : "");
+		std::snprintf(text, sizeof(text), "%s %s in scene %d%s: %d clip%s", m_words->done, m_clipName.c_str(),
+			m_scene + 1, sceneMark, _clips, _clips > 1 ? "s" : "");
 		status = text;
 		const std::string added = tracksAdded();
 		if(!added.empty())
 			status += ", " + added;
-		status += ". Mute the device or the clips, or each Hit plays twice.";
+		status += std::string(". ") + Twice;
 		appendWarnings(status);
 		for(const int track : _refused)
 			status += " no clip for " + trackLabel(track) + ".";

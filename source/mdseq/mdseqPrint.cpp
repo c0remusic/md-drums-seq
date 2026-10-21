@@ -86,12 +86,16 @@ namespace mdseq
 			w = seq->wake(at(w.next));
 		}
 
-		// Notes by start within each clip, a Hit (36-51) before its Locks (64-87).
-		for(std::vector<PrintedNote>& notes : printed.tracks)
-			std::sort(notes.begin(), notes.end(), [](const PrintedNote& _a, const PrintedNote& _b)
+		sortNotes(printed);
+		return printed;
+	}
+
+	void sortNotes(Printed& _printed)
+	{
+		for(std::vector<PrintedNote>& notes : _printed.tracks)
+			std::stable_sort(notes.begin(), notes.end(), [](const PrintedNote& _a, const PrintedNote& _b)
 			{
 				return _a.start != _b.start ? _a.start < _b.start : _a.pitch < _b.pitch;
 			});
-		return printed;
 	}
 }

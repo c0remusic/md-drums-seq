@@ -7,6 +7,8 @@ add_library(mdseqCore STATIC
 	mdseqCondition.cpp
 	mdseqSequencer.h
 	mdseqSequencer.cpp
+	mdseqText.h
+	mdseqText.cpp
 	mdseqView.h
 	mdseqView.cpp
 	mdseqEditor.h
@@ -23,6 +25,10 @@ add_library(mdseqCore STATIC
 	mdseqKit.cpp
 	mdseqUpdates.h
 	mdseqUpdates.cpp
+	mdseqPush.h
+	mdseqPush.cpp
+	mdseqCapture.h
+	mdseqCapture.cpp
 )
 target_include_directories(mdseqCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(mdseqCore PUBLIC cxx_std_17)

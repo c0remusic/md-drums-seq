@@ -34,7 +34,7 @@ namespace
 	{
 		const auto newer = parseVersion("0.2.0");
 		CHECK(updateNotice(newer, "0.1.0") ==
-			"md-drums-seq 0.2.0 is available: github.com/c0remusic/md-drums-seq/releases");
+			"MoDule Seq 0.2.0 is available: github.com/c0remusic/MModuleSeq/releases");
 		CHECK(updateNotice(newer, "0.2.0").empty() && updateNotice(newer, "0.3.0").empty());
 		CHECK(updateNotice(std::nullopt, "0.1.0").empty());
 	}

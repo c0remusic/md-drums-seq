@@ -11,6 +11,7 @@
 // its last step. The Playhead a wake hands the main thread, packed into one word.
 
 #include "mdseqSequencer.h"
+#include "mdseqTestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -47,18 +48,6 @@ void operator delete[](void* _p, std::size_t) noexcept { std::free(_p); }
 namespace
 {
 	using namespace mdseq;
-
-	int g_failures = 0;
-
-	void check(const bool _ok, const char* _what, const int _line)
-	{
-		if(_ok)
-			return;
-		std::printf("FAIL line %d: %s\n", _line, _what);
-		++g_failures;
-	}
-
-#define CHECK(_cond) check((_cond), #_cond, __LINE__)
 
 	struct Event
 	{
@@ -106,7 +95,7 @@ namespace
 		std::printf("FAIL line %d: events differ\n", _line);
 		print("got", _got);
 		print("expected", _expected);
-		++g_failures;
+		++mdseqTest::g_failures;
 	}
 
 #define CHECK_EVENTS(_got, _expected) checkEvents((_got), (_expected), __LINE__)
@@ -834,6 +823,72 @@ namespace
 		CHECK(!edited.input({Input::Kind::SetCurve, 0, 1, 40}));
 	}
 
+	Event accentOn(const double _tick, const int _track, const int _velocity)
+	{
+		return {_tick, 0x90 | (_track - 1), AccentNote, _velocity};
+	}
+
+	Event accentOff(const double _tick, const int _track)
+	{
+		return {_tick, 0x80 | (_track - 1), AccentNote, 0};
+	}
+
+	// Accent (issue 26): every Hit of a step in the Pattern's Accent row is followed, after its Locks, by note 88, whose
+	// velocity carries the Pattern's amount on the Locks' scale; played live it ends at once, as a Lock does.
+	void accents()
+	{
+		Played seq;
+		setHit(seq, 2, 0);
+		setLock(seq, 2, 0, Vol, 30);
+		setHit(seq, 5, 0);
+		setHit(seq, 5, 1);
+		CHECK(seq.input({Input::Kind::SetAccentStep, 0, 0, 1}));
+		CHECK(seq.input({Input::Kind::SetAccent, 0, 0, 40}));
+		CHECK(seq.pattern().accent == 40 && seq.pattern().inAccentRow(0) && !seq.pattern().inAccentRow(1));
+		CHECK_EVENTS(play(seq, 0.0, 200.0), (Events{
+			on(0, 2), lockOn(0, 2, Vol, 31), lockOff(0, 2, Vol), accentOn(0, 2, 41), accentOff(0, 2),
+			on(0, 5), accentOn(0, 5, 41), accentOff(0, 5),
+			off(120, 2), off(120, 5), on(120, 5)}));
+
+		// The amount from 0 to 127, at 0 by default: an accent of 0 still travels, at velocity 1.
+		CHECK(Pattern{}.accent == 0 && Pattern{}.accentSteps == 0);
+		CHECK(seq.input({Input::Kind::SetAccent, 0, 0, 200}));
+		CHECK(seq.pattern().accent == 127);
+		Played none;
+		setHit(none, 1, 0);
+		none.input({Input::Kind::SetAccentStep, 0, 0, 1});
+		CHECK_EVENTS(play(none, 0.0, 60.0), (Events{on(0, 1), accentOn(0, 1, 1), accentOff(0, 1)}));
+		CHECK(!none.input({Input::Kind::SetAccentStep, 0, MaxSteps, 1}));
+
+		// Each ratchet is accented.
+		Played ratchets;
+		setHit(ratchets, 3, 0);
+		setRatchets(ratchets, 3, 0, 2);
+		ratchets.input({Input::Kind::SetAccentStep, 0, 0, 1});
+		ratchets.input({Input::Kind::SetAccent, 0, 0, 100});
+		CHECK_EVENTS(play(ratchets, 0.0, 100.0), (Events{on(0, 3), accentOn(0, 3, 100), accentOff(0, 3),
+			off(60, 3), on(60, 3), accentOn(60, 3, 100), accentOff(60, 3)}));
+
+		// x2 copies the Accent row with the steps; Clear takes the amount and the row off.
+		Played doubled;
+		doubled.input({Input::Kind::SetLength, 0, 0, 16});
+		doubled.input({Input::Kind::SetAccentStep, 0, 3, 1});
+		doubled.input({Input::Kind::SetAccent, 0, 0, 70});
+		CHECK(doubled.input({Input::Kind::SetSlideStep, 0, 5, 1}));
+		CHECK(doubled.input({Input::Kind::DoubleLength, 0, 0, 0}));
+		CHECK(doubled.pattern().inAccentRow(3) && doubled.pattern().inAccentRow(19) && !doubled.pattern().inAccentRow(4));
+		CHECK(doubled.pattern().inSlideRow(5) && doubled.pattern().inSlideRow(21) && !doubled.pattern().inSlideRow(3));
+		CHECK(doubled.input({Input::Kind::ClearPattern, 0, 0, 0}));
+		CHECK(doubled.pattern().accent == 0 && doubled.pattern().accentSteps == 0 && doubled.pattern().slideSteps == 0);
+
+		// A muted Track's accent is silent with it.
+		Played muted;
+		setHit(muted, 1, 0);
+		muted.input({Input::Kind::SetAccentStep, 0, 0, 1});
+		muted.input({Input::Kind::SetMute, 0, 0, 1});
+		CHECK(play(muted, 0.0, 60.0).empty());
+	}
+
 	void setMicro(Sequencer& _seq, const int _track, const int _step, const int _micro)
 	{
 		_seq.input({Input::Kind::SetMicro, _track - 1, _step, _micro});
@@ -1001,9 +1056,95 @@ namespace
 		CHECK(passes1.size() > 3 && passes1.size() < 27);
 	}
 
-	// Every Track on every step: 8 ratchets of a Hit and 24 Locks, the most a step can hold, early or late.
+	// Slide (issue 26): with the last Hit of a step in the Slide row, after its Locks and Accent, note 89 carries the
+	// clocks (24 to a quarter note) to the Track's next Hit as both play, notes 90-113 that Hit's Locks for the Locks the
+	// step has, note 114 the clocks past 127; played live, each ends at once, as a Lock does. As Lock parameters:
+	constexpr int Slide = SlideNote - FirstLockNote;
+	constexpr int Target = FirstSlideTargetNote - FirstLockNote;
+	constexpr int Longer = LongSlideNote - FirstLockNote;
+	constexpr int Syn4 = 3;
+
+	void slides()
+	{
+		// Four steps to the next Hit at 1x: 24 clocks. SYN1 glides to the next Hit's; VOL, which that Hit does not lock,
+		// to the Kit's value, MD Drums' part; SYN4, locked on the next Hit only, does not glide.
+		Played seq;
+		setHit(seq, 2, 0);
+		setLock(seq, 2, 0, Syn1, 10);
+		setLock(seq, 2, 0, Vol, 20);
+		setHit(seq, 2, 4);
+		setLock(seq, 2, 4, Syn1, 100);
+		setLock(seq, 2, 4, Syn4, 50);
+		CHECK(seq.input({Input::Kind::SetSlideStep, 0, 0, 1}));
+		CHECK_EVENTS(play(seq, 0.0, 700.0), (Events{
+			on(0, 2), lockOn(0, 2, Syn1, 11), lockOff(0, 2, Syn1), lockOn(0, 2, Vol, 21), lockOff(0, 2, Vol),
+			lockOn(0, 2, Slide, 24), lockOff(0, 2, Slide), lockOn(0, 2, Target + Syn1, 100), lockOff(0, 2, Target + Syn1),
+			off(120, 2),
+			on(480, 2), lockOn(480, 2, Syn1, 100), lockOff(480, 2, Syn1), lockOn(480, 2, Syn4, 51), lockOff(480, 2, Syn4),
+			off(600, 2)}));
+
+		// With the last ratchet, from where it plays to where the next Hit plays: 60 to 270 ticks, 10.5 clocks, 11.
+		Played ratchets;
+		setHit(ratchets, 1, 0);
+		setRatchets(ratchets, 1, 0, 2);
+		setHit(ratchets, 1, 2);
+		setMicro(ratchets, 1, 2, 6);
+		ratchets.input({Input::Kind::SetSlideStep, 0, 0, 1});
+		CHECK_EVENTS(play(ratchets, 0.0, 200.0), (Events{on(0, 1), off(60, 1), on(60, 1), lockOn(60, 1, Slide, 11),
+			lockOff(60, 1, Slide), off(120, 1)}));
+
+		// The next step swung at 75 %, half a step late: 9 clocks.
+		Played swung;
+		setHit(swung, 1, 0);
+		setHit(swung, 1, 1);
+		swung.input({Input::Kind::SetSwing, 0, 0, 75});
+		swung.input({Input::Kind::SetSlideStep, 0, 0, 1});
+		CHECK_EVENTS(play(swung, 0.0, 10.0), (Events{on(0, 1), lockOn(0, 1, Slide, 9), lockOff(0, 1, Slide)}));
+
+		// The next Hit whatever its Condition: a FILL step that does not play still ends the Slide's clocks.
+		Played fill;
+		setHit(fill, 1, 0);
+		setHit(fill, 1, 2);
+		setCondition(fill, 1, 2, "FILL");
+		fill.input({Input::Kind::SetSlideStep, 0, 0, 1});
+		CHECK_EVENTS(play(fill, 0.0, 10.0), (Events{on(0, 1), lockOn(0, 1, Slide, 12), lockOff(0, 1, Slide)}));
+
+		// The only Hit glides to itself, a Pattern later: 16 steps, 96 clocks.
+		Played alone;
+		setHit(alone, 1, 2);
+		setLock(alone, 1, 2, Vol, 30);
+		alone.input({Input::Kind::SetSlideStep, 0, 2, 1});
+		CHECK_EVENTS(play(alone, 0.0, 300.0), (Events{on(240, 1), lockOn(240, 1, Vol, 31), lockOff(240, 1, Vol),
+			lockOn(240, 1, Slide, 96), lockOff(240, 1, Slide), lockOn(240, 1, Target + Vol, 31),
+			lockOff(240, 1, Target + Vol)}));
+
+		// Past 127 clocks, note 114 counts 127 more each: three steps at 1/8x are 144 clocks, 17 + 127.
+		Played slow;
+		slow.input({Input::Kind::SetScale, 0, 0, 0});
+		setHit(slow, 1, 0);
+		setHit(slow, 1, 3);
+		slow.input({Input::Kind::SetSlideStep, 0, 0, 1});
+		CHECK_EVENTS(play(slow, 0.0, 10.0), (Events{on(0, 1), lockOn(0, 1, Slide, 17), lockOff(0, 1, Slide),
+			lockOn(0, 1, Longer, 1), lockOff(0, 1, Longer)}));
+
+		// A muted Track's Slide is silent with it; a step outside the row sends none.
+		Played muted;
+		setHit(muted, 1, 0);
+		muted.input({Input::Kind::SetSlideStep, 0, 0, 1});
+		muted.input({Input::Kind::SetMute, 0, 0, 1});
+		CHECK(play(muted, 0.0, 60.0).empty());
+	}
+
+	// Every Track on every step: 8 ratchets of a Hit, 24 Locks, the Accent and the Slide, the most a step can hold,
+	// early or late.
 	void heaviestPattern(Sequencer& _seq)
 	{
+		_seq.input({Input::Kind::SetAccent, 0, 0, 90});
+		for(int s = 0; s < DefaultLength; ++s)
+		{
+			_seq.input({Input::Kind::SetAccentStep, 0, s, 1});
+			_seq.input({Input::Kind::SetSlideStep, 0, s, 1});
+		}
 		for(int t = 1; t <= TrackCount; ++t)
 		{
 			for(int s = 0; s < DefaultLength; ++s)
@@ -1527,6 +1668,79 @@ namespace
 	// The Playhead the adapter hands the main thread in one word: every step, Pattern played and Pattern queued a wake
 	// can give comes back whole, so no two share a word; a stopped Sequencer's is the one the adapter starts with, and
 	// a wake's word holds that wake's step and Patterns.
+	// Pattern _pattern, _length steps long, whose Track _pattern + 1 has a Hit on step 0.
+	void hitOnFirstStep(Sequencer& _seq, const int _pattern, const int _length)
+	{
+		Input in{Input::Kind::SetLength, 0, 0, _length};
+		in.pattern = _pattern;
+		_seq.input(in);
+		in = {Input::Kind::SetHit, _pattern, 0, 1};
+		in.pattern = _pattern;
+		_seq.input(in);
+	}
+
+	void setChain(Sequencer& _seq, const std::vector<int>& _patterns)
+	{
+		for(size_t i = 0; i < _patterns.size(); ++i)
+			_seq.input({Input::Kind::ChainEntry, 0, static_cast<int>(i), _patterns[i]});
+		_seq.input({Input::Kind::SetChain, 0, 0, static_cast<int>(_patterns.size())});
+	}
+
+	// A chain plays one Pass of each of its Patterns, round and round, its next one queued as each Pass is planned:
+	// a Pattern of one step plays one step, whatever the main thread sees of it. The same Pattern twice plays two
+	// Passes. Stopped, Live starts again from the place after the Pass played, though the next Pass was planned; a
+	// chain set while playing starts at the end of the Pass; a Pattern chosen ends it.
+	void chains()
+	{
+		Played seq;
+		hitOnFirstStep(seq, 0, 1);
+		hitOnFirstStep(seq, 2, 2);
+		setChain(seq, {0, 2, 2});
+		Wake w = seq.stopAt(0.0);
+		CHECK(w.chain == 0 && w.pattern == 0);
+		CHECK_EVENTS(play(seq, 0.0, 10.0), (Events{on(0, 1)}));
+		w = seq.at(10.0);
+		CHECK(w.chain == 0 && w.pattern == 0 && w.queued == 2);
+		CHECK_EVENTS(play(seq, 10.0, 130.0), (Events{off(120, 1), on(120, 3)}));
+		w = seq.at(130.0);
+		CHECK(w.chain == 1 && w.pattern == 2 && w.queued == -1);
+		CHECK_EVENTS(play(seq, 130.0, 370.0), (Events{off(240, 3), on(360, 3)}));
+		w = seq.at(370.0);
+		CHECK(w.chain == 2 && w.pattern == 2 && w.queued == 0);
+
+		// Stopped during the Pass's last step, once the next Pass was planned from Pattern 0: Live starts again from
+		// there.
+		CHECK_EVENTS(play(seq, 370.0, 485.0), (Events{off(480, 3)}));
+		w = seq.at(485.0);
+		CHECK(w.step == 1 && w.chain == 2 && w.queued == 0);
+		w = seq.stopAt(490.0);
+		CHECK(w.chain == 0 && w.pattern == 0 && w.queued == -1);
+		CHECK_EVENTS(play(seq, 0.0, 130.0), (Events{on(0, 1), off(120, 1), on(120, 3)}));
+
+		// A Pattern chosen ends the chain: the one it queued gives way.
+		CHECK(seq.input({Input::Kind::SetPattern, 0, 0, 0}));
+		w = seq.at(140.0);
+		CHECK(w.chain == -1 && w.pattern == 2 && w.queued == 0);
+
+		// Set while playing on a Pattern it does not hold: none plays until the Pass's end, then its first.
+		Played late;
+		hitOnFirstStep(late, 0, 1);
+		hitOnFirstStep(late, 1, 2);
+		hitOnFirstStep(late, 2, 2);
+		late.input({Input::Kind::SetPattern, 0, 0, 2});
+		play(late, 0.0, 10.0);
+		setChain(late, {1, 0});
+		w = late.at(20.0);
+		CHECK(w.chain == -1 && w.pattern == 2 && w.queued == 1);
+		CHECK_EVENTS(play(late, 20.0, 490.0), (Events{off(120, 3), on(240, 2), off(360, 2), on(480, 1)}));
+		CHECK(late.at(490.0).chain == 1);
+		// Set again empty: the Pattern it queued still follows.
+		CHECK(late.input({Input::Kind::SetChain, 0, 0, 0}));
+		w = late.at(500.0);
+		CHECK(w.chain == -1 && w.queued == 1);
+		CHECK(!late.input({Input::Kind::SetChain, 0, 0, 1}));	// one Pattern is no chain
+	}
+
 	void playheads()
 	{
 		bool whole = true;
@@ -1536,8 +1750,10 @@ namespace
 			{
 				for(int queued = -1; queued < PatternCount; ++queued)
 				{
-					const Playhead back = unpackPlayhead(packPlayhead({step, pattern, queued}));
-					whole = whole && back.step == step && back.pattern == pattern && back.queued == queued;
+					const int chain = (step + pattern + queued + 2) % (ChainLength + 1) - 1;
+					const Playhead back = unpackPlayhead(packPlayhead({step, pattern, queued, chain}));
+					whole = whole && back.step == step && back.pattern == pattern && back.queued == queued &&
+						back.chain == chain;
 				}
 			}
 		}
@@ -1640,27 +1856,24 @@ int main()
 	passes();
 	inputs();
 	locks();
+	accents();
 	conditions();
 	forwardWithinTheStep();
 	ratchetCurve();
 	ratchets();
 	microTiming();
 	swing();
+	slides();
 	editsOfAStepBegun();
 	loads();
 	scales();
 	bank();
 	switchNotReached();
+	chains();
 	playheads();
 	noAllocationWhilePlaying();
 	heaviestWakes();
 	heldNotes();
 
-	if(g_failures)
-	{
-		std::printf("mdseqSequencerTest: %d failure(s)\n", g_failures);
-		return 1;
-	}
-	std::printf("mdseqSequencerTest: OK\n");
-	return 0;
+	return mdseqTest::finish("mdseqSequencerTest");
 }

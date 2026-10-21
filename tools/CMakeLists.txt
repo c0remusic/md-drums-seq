@@ -19,18 +19,18 @@ add_custom_command(
 	VERBATIM
 )
 
-set(_device "${C74_LIBRARY_OUTPUT_DIRECTORY}/MD Drums Seq.amxd")
+set(_device "${C74_LIBRARY_OUTPUT_DIRECTORY}/MoDule Seq.amxd")
 add_custom_command(
 	OUTPUT "${_device}"
 	COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/make_device.py" "${_device}" "${_vocabulary}"
 		"${MDSEQ_CLASS}"
 	DEPENDS make_device.py "${_vocabulary}" "${CMAKE_BINARY_DIR}/CMakeCache.txt"
-	COMMENT "Writing the device MD Drums Seq.amxd"
+	COMMENT "Writing the device MoDule Seq.amxd"
 	VERBATIM
 )
 add_custom_target(mdseqDevice ALL DEPENDS "${_device}")
 
-# A release's zip, md-drums-seq-<version>-win64.zip in the build folder, on request: cmake --build build --config
+# A release's zip, MModuleSeq-<version>-win64.zip in the build folder, on request: cmake --build build --config
 # Release --target zip_release. package.py refuses a development build.
 add_custom_target(zip_release
 	COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/package.py" "${C74_LIBRARY_OUTPUT_DIRECTORY}"

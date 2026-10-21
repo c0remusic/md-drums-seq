@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v9</title>
+<link rel="stylesheet" href="v9-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v9</h1>
+	<p class="note">La v8 (structure Overbridge aux couleurs de MoDule, en natif Max sans JavaScript) après son audit du
+		2026-10-20, et toutes les tailles en multiples de 2.</p>
+
+	<h2>Ce qui change depuis la v8</h2>
+	<ul class="changes">
+		<li><b>Une couleur, un rôle.</b> L'encre (#f2f2f2) pour le contenu, les Hits et les valeurs, et pour ce qui est
+			choisi : Pattern, Track, page et Hit en touche inversée. Le turquoise de MoDule (#6fd1c4) pour ce qui vit
+			seulement : pas joué, sélection, Locks, LED d'un mode, Pattern en file. Le corail (#ff7a5c) pour une Track coupée
+			seulement. Les rangées ont leurs marques : Accent ambre (#e8b35a), Slide pervenche (#9fb7ff).</li>
+		<li><b>Capitales mesurées.</b> Titres de groupe, touches, menus et noms courts des paramètres en capitales ; les
+			écrans en casse normale ; la marque écrite « MoDule Seq ».</li>
+		<li><b>Moins de boîtes.</b> Les écrans ne gardent que les états (Pattern, chaîne, prise, nouvelle version, pas
+			montré, micro-timing, courbe des ratchets, Print) ; les valeurs des Locks et la vélocité redeviennent du texte, un
+			Lock en turquoise, la valeur du Kit dans l'encre pâle.</li>
+		<li><b>Hiérarchie.</b> Titres de groupe en 10 px gras, pâles ; touches, menus et écrans en 10 px ; noms et valeurs
+			en 12 px ; titre du panneau et FILL en 14 px gras.</li>
+		<li><b>Contrastes.</b> Encre pâle #9a9da3 (4,5:1 sur la face, le seuil AA) ; touches #3d3e43 sur une face #2a2b2f,
+			qui s'en détachent.</li>
+		<li><b>Multiples de 2</b>, à la demande de l'utilisateur : tailles de texte 10, 12 et 14 px ; dans les cases, des
+			marges de 2 px, des bandes de 2 px, la marque d'un Lock en carré de 4 px dans un cadre de 8 ; la LED d'un mode de
+			4 px.</li>
+	</ul>
+
+	<h2>Bande</h2>
+	<div class="fam-v9" id="strip"></div>
+	<h2>Fenêtre d'édition</h2>
+	<div class="fam-v9" id="window"></div>
+</div>
+<script src="v9-ui.js"></script>
+<script>
+	// Canvases take a font once it has loaded
+	Promise.all([document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMock9.strip(document.getElementById("strip"));
+			mdSeqMock9.editWindow(document.getElementById("window"));
+		});
+</script>
+</body>
+</html>

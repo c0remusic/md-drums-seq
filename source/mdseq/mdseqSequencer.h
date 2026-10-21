@@ -38,15 +38,26 @@ namespace mdseq
 		// none.
 		int pattern;
 		int queued;
+		// The place in the chain of the Pass played, from 0; stopped, the place Live starts from. -1 for none: no
+		// chain plays, or its first Pattern waits for the end of the Pass.
+		int chain = -1;
+		// What the transport did since the last wake, for the journal of a capture (issue 23): it started, it jumped
+		// from the tick of the last look, or it stopped.
+		bool started = false;
+		bool jumped = false;
+		double jumpedFrom = 0.0;
+		bool stopped = false;
 	};
 
 	// Where the Sequencer plays, as the main thread shows it (Editor::follow and Editor::played): a Wake's step,
-	// Pattern played and Pattern queued. The defaults are a Sequencer's stopped on the first Pattern, none queued.
+	// Pattern played, Pattern queued and place in the chain. The defaults are a Sequencer's stopped on the first
+	// Pattern, none queued, no chain.
 	struct Playhead
 	{
 		int step = -1;
 		int pattern = 0;
 		int queued = -1;
+		int chain = -1;
 	};
 
 	Playhead playhead(const Wake& _wake);
@@ -69,12 +80,13 @@ namespace mdseq
 		// transport that stops, or jumps, also sends the note-off of every note sounding.
 		Wake wake(const Transport& _now);
 
-		// An edit of a Pattern of the bank, a Mute, the Fill, or the Pattern to play. Step n+1 is planned while step n
-		// plays: an edit of it plans it again, so that it is heard on this Pass, but for the Tracks it has begun to
-		// sound on (micro-timing moves them earlier), which play as they were planned. A Mute cuts at once, events
-		// already planned included. A Pattern chosen while playing follows at the end of the Pass played, anchored
-		// there and counting its Passes from 1; chosen while stopped, it is the one played. Returns false when nothing
-		// changed.
+		// An edit of a Pattern of the bank, a Mute, the Fill, the Pattern to play or the chain. Step n+1 is planned
+		// while step n plays: an edit of it plans it again, so that it is heard on this Pass, but for the Tracks it has
+		// begun to sound on (micro-timing moves them earlier), which play as they were planned. A Mute cuts at once,
+		// events already planned included. A Pattern chosen while playing follows at the end of the Pass played,
+		// anchored there and counting its Passes from 1; chosen while stopped, it is the one played. A chain queues its
+		// next Pattern as each Pass begins, when that Pass's first step is planned: a Pattern of one step plays one
+		// step a Pass. Returns false when nothing changed.
 		bool input(const Input& _in);
 
 		// A whole Pattern of the bank, the one the set kept (loaded, or given back by Live's undo): if it is the one
@@ -105,8 +117,10 @@ namespace mdseq
 			Hit
 		};
 
-		// What a note plays: the Track's Hit, or one of its Locks.
+		// What a note plays: the Track's Hit, or one of the notes that go with it, the note FirstLockNote + parameter:
+		// its 24 Locks, the Accent, the Slide's clocks, its 24 targets and its clocks past 127.
 		static constexpr uint8_t HitNote = 0xff;
+		static constexpr int ParamCount = LongSlideNote - FirstLockNote + 1;
 
 		struct Planned
 		{
@@ -115,7 +129,8 @@ namespace mdseq
 			uint16_t rank;	// the order among the events of one unit (rankOf)
 			Kind kind;
 			uint8_t track;
-			uint8_t param;	// a Lock's parameter, HitNote for the Hit; a note-off carries its note's
+			uint8_t param;	// a Lock's parameter, the Accent's or the Slide's (HitNote's comment), HitNote for the Hit; a
+						// note-off carries its note's
 			uint8_t velocity;
 			uint8_t pattern;	// the Pattern it was planned from
 			uint64_t note;	// which note it is, so that a note-off ends only its own note
@@ -133,13 +148,15 @@ namespace mdseq
 			int64_t next;
 		};
 
-		// A step planned: where it begins, from which Pattern, its position and Pass; what the step played is.
+		// A step planned: where it begins, from which Pattern, its position, Pass and the Pass's place in the chain;
+		// what the step played is.
 		struct StepPlanned
 		{
 			double tick;
 			int pattern;
 			int position;
 			uint32_t pass;
+			int chain;
 		};
 
 		// Parenthesised: the Max SDK's headers define a max macro.
@@ -147,11 +164,22 @@ namespace mdseq
 
 		int64_t stepAt(double _ticks) const;
 		double tickOf(int64_t _at) const;
+		// The unit where _step begins on the grid, and where a Track's group of ratchets there begins, moved by the
+		// step's swing and the Track's micro-timing.
+		int64_t gridOf(int64_t _step) const;
+		int64_t groupBegin(int64_t _step, int _track) const;
 		static uint16_t rankOf(Kind _kind, uint8_t _track, uint8_t _param);
 		int position(int64_t _step) const;
 		uint16_t tracksBegun() const;
 
 		bool choose(int _pattern);
+		bool setChain(int _length);
+		// A Pass begins on the Pattern current: its place in the chain is the one queued if it holds that Pattern, the
+		// same if the Pattern queued did not follow (a jump back within the Pass), none otherwise; the next place
+		// follows it.
+		void chainPass();
+		// The chain's next place's Pattern, as a Pattern queued: -1 when it is the current one again, or none is next.
+		int chainQueued() const;
 		void switchTo(int _pattern, double _anchor);
 		void applyScale();
 		// Whether Live, playing since the last look, has moved other than by playing on.
@@ -198,6 +226,12 @@ namespace mdseq
 		int m_queued = -1;				// the one that follows at the end of its Pass
 		double m_anchor = 0.0;			// the tick of the current Pattern's step 0: the song's start, then each switch
 		uint16_t m_mutes = 0;
+		// The chain: its Patterns, how many play (0 for none), the place of the Pass planned (-1 for none) and the one
+		// that follows it.
+		std::array<int8_t, ChainLength> m_chain{};
+		int m_chainLength = 0;
+		int m_chainPos = -1;
+		int m_chainNext = -1;
 
 		bool m_playing = false;
 		int64_t m_nextToPlan = 0;		// step k is planned once the transport reaches step k-1
@@ -214,13 +248,19 @@ namespace mdseq
 		// The last look while playing: where Live was, and when, from which the next look tells a jump.
 		double m_lastTicks = 0.0;
 		double m_lastMs = 0.0;
+		// This wake's start, jump (and from where) and stop, which result reports.
+		bool m_started = false;
+		bool m_jumped = false;
+		double m_jumpedFrom = 0.0;
+		bool m_stopped = false;
 
 		std::vector<Planned> m_queue;	// sorted, capacity reserved for the worst case
+		size_t m_sent = 0;				// the events at its front already sent, which planStep drops
 		std::vector<Planned> m_staged;	// the step being planned, in order, then merged into the queue
 		uint64_t m_nextNote = 1;
-		// The note each Track's Hit and each of its Locks sounds, 0 for none.
+		// The note each Track's Hit, and each note that goes with it, sounds, 0 for none.
 		std::array<uint64_t, TrackCount> m_sounding{};
-		std::array<std::array<uint64_t, LockCount>, TrackCount> m_lockSounding{};
+		std::array<std::array<uint64_t, ParamCount>, TrackCount> m_lockSounding{};
 		uint64_t& sounding(uint8_t _track, uint8_t _param);
 		static uint8_t key(uint8_t _track, uint8_t _param);
 		std::vector<MidiEvent> m_out;

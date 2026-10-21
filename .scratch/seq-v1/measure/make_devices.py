@@ -205,8 +205,41 @@ def banks_probe():
 	return patch
 
 
+def push_probe():
+	"""md-seq-push-probe.amxd (issue 33): push_probe.js, beside it, grabs Push 2's eight track encoders two seconds after
+	the device loads and logs what they send to %TEMP%\\mdseq-push-probe.txt; the "Probe Surface" parameter, which the
+	LOM can set, grabs them on another control surface. Incoming MIDI passes through."""
+	surface = numbox("obj-6", [220, 60, 44, 15], [8, 30, 44, 15], "Probe Surface")
+	del surface["box"]["saved_attribute_attributes"]["valueof"]["parameter_initial_enable"]
+	del surface["box"]["saved_attribute_attributes"]["valueof"]["parameter_initial"]
+	surface["box"]["saved_attribute_attributes"]["valueof"]["parameter_mmax"] = 19
+	boxes = [
+		box("obj-1", "newobj", [20, 20, 40, 20], 1, 1, "midiin", ["int"]),
+		box("obj-2", "newobj", [20, 400, 47, 20], 1, 0, "midiout"),
+		box("obj-3", "newobj", [120, 20, 100, 20], 1, 3, "live.thisdevice", ["bang", "int", "int"]),
+		box("obj-4", "newobj", [120, 60, 70, 20], 2, 1, "delay 2000", ["bang"]),
+		box("obj-5", "message", [120, 100, 40, 20], 2, 1, "start", [""]),
+		surface,
+		box("obj-7", "newobj", [220, 100, 80, 20], 2, 1, "prepend grab", [""]),
+		box("obj-8", "newobj", [120, 160, 110, 20], 1, 1, "js push_probe.js", [""]),
+		box("obj-9", "message", [320, 100, 50, 20], 2, 1, "release", [""], present=[60, 30, 50, 20]),
+		box("obj-10", "live.comment", [460, 20, 200, 18], 1, 0, "Push encoders probe", present=[8, 8, 160, 18]),
+	]
+	lines = [
+		line("obj-1", 0, "obj-2", 0),
+		line("obj-3", 0, "obj-4", 0),
+		line("obj-4", 0, "obj-5", 0),
+		line("obj-5", 0, "obj-8", 0),
+		line("obj-6", 0, "obj-7", 0),
+		line("obj-7", 0, "obj-8", 0),
+		line("obj-9", 0, "obj-8", 0),
+	]
+	return patcher("md-seq-push-probe", boxes, lines, 180.0)
+
+
 if __name__ == "__main__":
 	here = pathlib.Path(__file__).resolve().parent
+	write_amxd(here / "md-seq-push-probe.amxd", push_probe())
 	write_amxd(here / "md-seq-probe.amxd", probe())
 	write_amxd(here / "md-seq-channels.amxd", channels())
 	write_amxd(here / "md-seq-channel-probe.amxd", channel_probe())

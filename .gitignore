@@ -1,2 +1,7 @@
 /build/
+# A development build, its class mdseq_dbgN (-DMDSEQ_CLASS), beside the gate's
+/build-dev/
 __pycache__/
+
+# Ableton Sans, copied from Live for the mockups only: never committed
+Design/fonts/

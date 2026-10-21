@@ -1,0 +1,78 @@
+/* MoDule Seq v7, look variant "overbridge": v7's layout, the look of Elektron's machines and of Overbridge borrowed
+   (near-black faces, hairlines, small spaced capitals, OLED-like screens, red trigs, rings for encoders), not their
+   brand. Layered over v7-ui.css; the containers carry .fam-ob instead of .fam-live. Buildable with the same Max objects:
+   colours, fonts and lcd drawings only. */
+
+.fam-ob {
+	--chrome: #050505;
+	--bg: #141414;
+	--panel: #1b1b1b;
+	--panel-beat: #161616;
+	--line: #2b2b2b;
+	--border: #2f2f2f;
+	--text: #ededed;
+	--text-dim: #8d8d8d;
+	--text-faint: #565656;
+	--hit: #ff4632;
+	--on: #ededed;
+	--on-text: #0c0c0c;
+	--accent: #ededed;
+	--active: #39d353;
+	--muted: #262626;
+	--cond: #bdbdbd;
+	--font: "Ableton Sans", Arial, sans-serif;
+	--mono: Consolas, "Courier New", monospace;
+	--fs-s: 9px; --fs-m: 9px; --fs-l: 12px; --fs-xl: 12px;
+	--radius: 1px;
+}
+
+.fam-ob .host { padding: 12px; }
+.fam-ob .device { box-shadow: 0 0 0 1px #000; }
+.fam-ob .device .titlebar { background: #0c0c0c; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px;
+	font-size: 9px; border-bottom: 1px solid var(--line); }
+
+/* Labels: small capitals, spaced */
+.fam-ob .label, .fam-ob .dialname, .fam-ob .trackname { text-transform: uppercase; letter-spacing: 1.2px;
+	font-size: 9px; font-weight: 500; color: var(--text-dim); }
+.fam-ob .trackname.shown, .fam-ob .dialname.locked { color: var(--text); font-weight: 700; }
+.fam-ob .title-l { text-transform: uppercase; letter-spacing: 2px; font-size: 12px; font-weight: 700; }
+.fam-ob .hint { font-family: var(--mono); color: var(--text-faint); font-size: 9px; }
+
+/* Buttons: flat keys, a hairline, capitals; lit as a white key with dark ink */
+.fam-ob .btn { background: var(--panel); border: 1px solid var(--border); border-radius: 1px; color: var(--text-dim);
+	text-transform: uppercase; letter-spacing: 1px; font-size: 9px; font-weight: 500; }
+.fam-ob .btn.on { background: var(--on); border-color: var(--on); color: var(--on-text); }
+.fam-ob .btn.big { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--text); }
+.fam-ob .btn.empty { color: var(--text-faint); }
+.fam-ob .btn.queued { box-shadow: inset 0 0 0 1px var(--hit); }
+.fam-ob .btn.past { background: #101010; color: #3a3a3a; border-color: #1f1f1f; }
+/* Modes as on the machines' function keys: a lit LED bar along the key's top, amber */
+.fam-ob .roles .btn.mode.on, .roles .fam-ob .btn.mode.on, .fam-ob .btn.mode.on { background: var(--panel);
+	color: var(--text); border-color: var(--border); box-shadow: inset 0 2px 0 #ffb000; }
+.fam-ob .btn.setting.on { background: var(--panel); color: var(--text); box-shadow: inset 0 2px 0 #8d8d8d; }
+/* Track activators: a green LED when the Track plays, dark when muted */
+.fam-ob .mute { background: #0f2914; color: #39d353; border-color: #1d4d26; font-family: var(--mono); }
+.fam-ob .mute.muted { background: var(--muted); color: var(--text-faint); border-color: var(--border); }
+
+.fam-ob .menu { background: var(--panel); border: 1px solid var(--border); border-radius: 1px; color: var(--text);
+	text-transform: uppercase; letter-spacing: 1px; font-size: 9px; }
+.fam-ob .menu::after { color: var(--text-faint); }
+.fam-ob .slider { background: #0b0b0b; border: 1px solid var(--border); border-radius: 1px; }
+.fam-ob .slider .val { background: var(--text); }
+.fam-ob .rule { background: var(--line); }
+
+/* Screens: the machines' OLED, white on black, fixed pitch, capitals */
+.fam-ob .screen { background: #000; border: 1px solid #262626; border-radius: 1px; color: #f4f4f4;
+	font-family: var(--mono); font-size: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; }
+.fam-ob .screen.value { color: #f4f4f4; }
+.fam-ob .screen.value.kit { color: #6f6f6f; font-style: normal; }
+.fam-ob .screen.value.locked { color: #ffd23f; font-weight: 700; }
+.fam-ob .screen.news { color: #ffb000; }
+
+/* Encoders: a thin white ring on a dark track */
+.fam-ob svg path[style*="stroke-width: 3"] { stroke-width: 2 !important; }
+/* Consolas' capitals stand 7 px at 10 px, one less than Ableton Sans' 8, for which screen() places the baseline: half a
+   pixel up evens the space above and below them */
+.fam-ob .screen > div { position: relative; top: -0.5px; }
+/* A menu's capitals closer, so that "Copy to" holds in its 64 px */
+.fam-ob .menu { letter-spacing: 0.4px; white-space: nowrap; }

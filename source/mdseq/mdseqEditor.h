@@ -68,6 +68,9 @@ namespace mdseq
 		const EditorOutput& showHalf(int _half);
 		// The window's half follows the step played.
 		const EditorOutput& setFollow(bool _follow);
+		// The edit window shown or closed: closed, nothing is drawn in its grid, drawn whole again when it shows. An
+		// Editor starts with it shown; the external's starts with it closed, as the device loads.
+		const EditorOutput& setWindow(bool _shown);
 
 		const EditorOutput& setMute(int _track, bool _muted);
 		// The step panel, on the step selected.
@@ -95,14 +98,29 @@ namespace mdseq
 		const EditorOutput& setLength(int _length);
 		// The Pattern's scale, by index: 1/8x to 2x.
 		const EditorOutput& setScale(int _scale);
-		// The Pattern's swing, 50-80 %, which delays the steps of the swing row under the grid. A click in that row
-		// toggles its step for every Track; dragging paints as in the grid.
+		// The trig row under the grid, which the menu at its left chooses: the swing row (its steps play late by the
+		// Pattern's swing), the Accent row (every Hit of its steps plays at 128 + 2 x the Pattern's Accent; the strip
+		// marks them, whichever row is shown) or the Slide row. A click in it toggles its step for every Track; dragging
+		// paints as in the grid.
+		enum class TrigRow
+		{
+			Swing,
+			Accent,
+			Slide
+		};
+		static constexpr int TrigRowCount = 3;
+		const EditorOutput& showTrigRow(int _row);
+		TrigRow trigRow() const { return m_trigRow; }
+		// The Pattern's swing, 50-80 %.
 		const EditorOutput& setSwing(int _percent);
+		// The Pattern's Accent, 0-127.
+		const EditorOutput& setAccent(int _amount);
 
 		// The step the Sequencer plays, -1 when stopped.
 		const EditorOutput& played(int _step);
-		// The Pattern the Sequencer plays and the one it has queued: a switch shows the new Pattern.
-		const EditorOutput& follow(int _pattern, int _queued);
+		// The Pattern the Sequencer plays, the one it has queued and the place of its Pass in the chain (-1 for none): a
+		// switch shows the new Pattern.
+		const EditorOutput& follow(int _pattern, int _queued, int _chain = -1);
 		// The Pattern to play: queued for the end of the Pass while playing, shown at once while stopped. Forwarded.
 		const EditorOutput& setPattern(int _pattern);
 		// The Pattern shown copied over Pattern _target, forwarded as an edit of _target (Live's undo gives it back,
@@ -110,18 +128,17 @@ namespace mdseq
 		const EditorOutput& copyPattern(int _target);
 		// The Pattern shown twice as long, up to 64 steps, its steps again after them on every Track.
 		const EditorOutput& doubleLength();
-		// The Pattern shown back to an empty one, its length, scale and swing too (Live's undo gives it back, through
-		// its Blob).
+		// The Pattern shown back to an empty one, its length, scale, swing and Accent too (Live's undo gives it back,
+		// through its Blob).
 		const EditorOutput& clearPattern();
 		// Fill edit: a Hit the mouse puts in the grid or the strip takes the Condition FILL, and the Hits the Fill
 		// does not concern (neither FILL nor !FILL) are drawn faded.
 		const EditorOutput& setFillEdit(bool _on);
 
 		// A chain of Patterns, one Pass each, round and round. Chain mode on starts a new one, to which each Pattern
-		// clicked is appended (chainAdd, up to ChainLength) instead of chosen; off, two or more play, as each Pass
-		// begins queueing the next (none for the same Pattern again), one is chosen. A Pattern chosen by hand
-		// (setPattern) ends it.
-		static constexpr int ChainLength = 16;
+		// clicked is appended (chainAdd, up to ChainLength) instead of chosen; off, two or more are forwarded to the
+		// Sequencer, which plays them (its first shown at once while stopped), one is chosen. A Pattern chosen by hand
+		// (setPattern) ends it, in the Sequencer too.
 		const EditorOutput& setChainMode(bool _on);
 		const EditorOutput& chainAdd(int _pattern);
 		// The chain as the set kept it ("chainstore playing length patterns...", which the Editor sends each time a
@@ -140,7 +157,21 @@ namespace mdseq
 		// its row in the window, the panel's title, the Machine's names for SYN1-8 and the Kit's values on the Lock dials.
 		const EditorOutput& setKit(const std::optional<Kit>& _kit);
 
+		// The step selected moved to _step of _track, drawn and told as a click selecting it would (Push's pads).
+		const EditorOutput& selectStep(int _track, int _step);
+		// Pattern _source copied over Pattern _target, and Pattern _pattern back to an empty one, as copyPattern and
+		// clearPattern do for the Pattern shown (Push's Duplicate and Delete).
+		const EditorOutput& copyPattern(int _target, int _source);
+		const EditorOutput& clearPattern(int _pattern);
+
 		const Pattern& pattern() const { return m_bank[m_shown]; }
+		int shownTrack() const { return m_track; }	// the Track the strip shows
+		int playedStep() const { return m_played; }
+		bool chainMode() const { return m_chainMode; }
+		bool muted(int _track) const { return (m_mutes >> _track & 1u) != 0; }
+		PatternState patternState(int _pattern) const;
+		// The step selected's value of parameter _param: its Lock, else the Kit's, -1 while MD Drums does not tell it.
+		int lockOrKit(int _param) const;
 		const Pattern& pattern(const int _index) const { return m_bank[_index]; }
 		const std::vector<Pattern>& bank() const { return m_bank; }	// the PatternStore writes from it
 		int shown() const { return m_shown; }
@@ -153,19 +184,28 @@ namespace mdseq
 	private:
 		bool edit(const Input& _in);
 		void paint(int _track, int _step);
-		void paintSwing(int _step);
+		void paintTrig(int _step);
+		Input::Kind trigKind() const;		// the edit of a step of the trig row shown
+		bool inTrigRow(int _step) const;	// whether the step is in the trig row shown
 		void select(int _track, int _step);
 		void redrawCell(int _track, int _step);
 		void redrawGridColumn(int _step);
 		void redrawStripStep(int _step);
-		CellLook lookOf(int _step) const;	// a beat, the step played
+		CellLook lookOf(int _step) const;	// a beat, the step played, past the length
 		bool faded(const Step& _step) const;
+		// The Pattern shown drawn again whole into the output, with the step panel, but not the Kit's names, which a
+		// Pattern switch keeps.
+		void drawPattern();
 		void redrawStrip();
 		void redrawGrid();
+		void lengthChanged();
+		int pageCount() const;		// the strip's pages within the Pattern's length, 1-4
+		void keepPageInLength();
+		void pagesPanel();
 		void drawStripCell(int _cell);
 		void drawGridCell(int _row, int _column);
-		void drawSwingRow();
-		void drawSwingCell(int _column);
+		void drawTrigRow();
+		void drawTrigCell(int _column);
 		const Step& stepSelected() const;
 		void panelInts(PanelKey _key, std::initializer_list<int> _ints);
 		void panelText(PanelKey _key, const char* _text);
@@ -174,12 +214,14 @@ namespace mdseq
 		void selectionPanel();
 		void lengthPanel();
 		void swingPanel();
+		void accentPanel();
+		void trigRowPanel();
 		void halfPanel();
 		void statusPanel();
 		void patternPanel();
 		void patternStatePanel(int _pattern);
 		void choose(int _pattern);	// setPattern's choice, without ending a chain
-		void chainNext();			// the chain's next Pattern queued, unless it is the one playing again
+		void forwardChain();		// the chain's Patterns, then how many play: none while it does not
 		void chainPanel();
 		void chainStore();			// the chain for its Blob in the set
 		bool used(int _pattern) const;	// holds a Hit
@@ -199,16 +241,18 @@ namespace mdseq
 		uint16_t m_mutes = 0;
 		bool m_fill = false;
 		bool m_fillEdit = false;
+		TrigRow m_trigRow = TrigRow::Swing;
 		bool m_chainMode = false;		// building a chain: Patterns clicked are appended
 		bool m_chainActive = false;		// a chain plays
 		std::array<int, ChainLength> m_chain{};
 		int m_chainLength = 0;
-		int m_chainPos = 0;				// the entry playing, -1 while its first is queued
+		int m_chainPos = -1;			// the place playing, as the Sequencer reports it; -1 while its first is queued
 
 		int m_track = 0;	// the Track the strip shows
 		int m_page = 0;		// the strip's page of 16 steps
 		int m_half = 0;		// the window's half of 32 steps
 		bool m_follow = true;
+		bool m_window = true;	// the edit window shows: its grid is drawn
 		int m_selectedTrack = 0;
 		int m_selectedStep = 0;
 		int m_played = -1;

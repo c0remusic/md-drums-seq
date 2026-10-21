@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 namespace mdseq
 {
@@ -12,12 +13,31 @@ namespace mdseq
 	{
 		constexpr int LockWords = LockCount / 4;
 		constexpr int64_t Bits7 = 0x7f;
-		// The swing row in words of 22 bits, the first holding steps 1-22: every word below 2^31.
-		constexpr int SwingBits = 22;
-		constexpr int SwingWords = (MaxSteps + SwingBits - 1) / SwingBits;
-		constexpr uint64_t SwingMask = (1ull << SwingBits) - 1;
+		// A row of steps (swing, Accent) in words of 22 bits, the first holding steps 1-22: every word below 2^31.
+		constexpr int RowBits = 22;
+		constexpr int RowWords = (MaxSteps + RowBits - 1) / RowBits;
+		constexpr uint64_t RowMask = (1ull << RowBits) - 1;
 
-		// FNV-1a over the words: enough to know what a Blob holds without keeping up to 8197 words per Pattern.
+		// A row's words from _words[_i], moving _i past them: none when they are missing, out of range or hold bits past
+		// step 64.
+		std::optional<uint64_t> readRow(const int64_t* _words, const size_t _count, size_t& _i)
+		{
+			if(_count < _i + RowWords)
+				return std::nullopt;
+			uint64_t steps = 0;
+			for(int w = 0; w < RowWords; ++w)
+			{
+				const int64_t word = _words[_i++];
+				if(word < 0 || word > static_cast<int64_t>(RowMask))
+					return std::nullopt;
+				steps |= static_cast<uint64_t>(word) << (RowBits * w);
+			}
+			if(_words[_i - 1] >> (MaxSteps - RowBits * (RowWords - 1)))
+				return std::nullopt;
+			return steps;
+		}
+
+		// FNV-1a over the words: enough to know what a Blob holds without keeping up to 8204 words per Pattern.
 		uint64_t hashOf(const int64_t* _words, const size_t _count)
 		{
 			uint64_t h = 1469598103934665603ull;
@@ -35,15 +55,30 @@ namespace mdseq
 	std::vector<int64_t> encode(const Pattern& _pattern)
 	{
 		// The head: the length, the scale, then the swing above 50 % and whether the swing row differs from the default,
-		// which then follows in SwingWords. A Pattern of the default swing writes the words it wrote before swing came,
-		// so that the Blobs of sets saved then compare equal to what this build writes.
+		// which then follows in RowWords, whether the Pattern has an Accent, whose amount and row follow, and whether
+		// it has a Slide row, which follows them. A Pattern of the default swing, without an Accent or a Slide, writes
+		// the words it wrote before any of them came, so that the Blobs of sets saved then compare equal to what this
+		// build writes.
 		const bool ownRow = _pattern.swingSteps != DefaultSwingSteps;
+		const bool accent = _pattern.accent != 0 || _pattern.accentSteps != 0;
+		const bool slide = _pattern.slideSteps != 0;
 		const int64_t head = _pattern.length | _pattern.scale << 8 | (_pattern.swing - MinSwing) << 12 |
-			(ownRow ? 1 : 0) << 17;
+			(ownRow ? 1 : 0) << 17 | (accent ? 1 : 0) << 18 | (slide ? 1 : 0) << 19;
 		std::vector<int64_t> words{StoreMagic, head};
+		const auto row = [&words](const uint64_t _steps)
+		{
+			for(int w = 0; w < RowWords; ++w)
+				words.push_back(static_cast<int64_t>(_steps >> (RowBits * w) & RowMask));
+		};
 		if(ownRow)
-			for(int w = 0; w < SwingWords; ++w)
-				words.push_back(static_cast<int64_t>(_pattern.swingSteps >> (SwingBits * w) & SwingMask));
+			row(_pattern.swingSteps);
+		if(accent)
+		{
+			words.push_back(_pattern.accent);
+			row(_pattern.accentSteps);
+		}
+		if(slide)
+			row(_pattern.slideSteps);
 		for(int t = 0; t < TrackCount; ++t)
 		{
 			for(int s = 0; s < MaxSteps; ++s)
@@ -84,29 +119,41 @@ namespace mdseq
 		const int scale = static_cast<int>(head >> 8 & 0xf);
 		const int swing = MinSwing + static_cast<int>(head >> 12 & 0x1f);
 		const bool ownRow = (head >> 17 & 1) != 0;
-		if(head < 0 || head >> 18 || length < 1 || length > MaxSteps || scale >= ScaleCount || swing > MaxSwing)
+		const bool accent = (head >> 18 & 1) != 0;
+		const bool slide = (head >> 19 & 1) != 0;
+		if(head < 0 || head >> 20 || length < 1 || length > MaxSteps || scale >= ScaleCount || swing > MaxSwing)
 			return false;
 		pattern.length = length;
 		pattern.scale = static_cast<uint8_t>(scale);
 		pattern.swing = static_cast<uint8_t>(swing);
 
+		// A swing row of its own equal to the default, an Accent of 0 without a row, and an empty Slide row, are not what
+		// encode writes.
 		size_t i = 2;
 		if(ownRow)
 		{
-			if(_count < 2 + SwingWords)
+			const std::optional<uint64_t> steps = readRow(_words, _count, i);
+			if(!steps || *steps == DefaultSwingSteps)
 				return false;
-			uint64_t steps = 0;
-			for(int w = 0; w < SwingWords; ++w)
-			{
-				const int64_t word = _words[i++];
-				if(word < 0 || word > static_cast<int64_t>(SwingMask))
-					return false;
-				steps |= static_cast<uint64_t>(word) << (SwingBits * w);
-			}
-			// The last word's bits past step 64, and a row equal to the default, are not what encode writes.
-			if(_words[i - 1] >> (MaxSteps - SwingBits * (SwingWords - 1)) || steps == DefaultSwingSteps)
+			pattern.swingSteps = *steps;
+		}
+		if(accent)
+		{
+			if(_count < i + 1)
 				return false;
-			pattern.swingSteps = steps;
+			const int64_t amount = _words[i++];
+			const std::optional<uint64_t> steps = readRow(_words, _count, i);
+			if(amount < 0 || amount > MaxAccent || !steps || (amount == 0 && *steps == 0))
+				return false;
+			pattern.accent = static_cast<uint8_t>(amount);
+			pattern.accentSteps = *steps;
+		}
+		if(slide)
+		{
+			const std::optional<uint64_t> steps = readRow(_words, _count, i);
+			if(!steps || *steps == 0)
+				return false;
+			pattern.slideSteps = *steps;
 		}
 		while(i < _count)
 		{

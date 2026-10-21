@@ -47,14 +47,16 @@ namespace mdseq
 		{
 		case Kind::SetFill:
 		case Kind::SetPattern:
+		case Kind::ChainEntry:
+		case Kind::SetChain:
 		case Kind::CopyPattern:	// two Patterns: the bank's holder copies (copyPattern)
 			return false;
 		case Kind::ClearPattern:
 			return assign(_pattern, Pattern{});
 		case Kind::DoubleLength:
 		{
-			// As Live's Duplicate Loop doubles a clip: every Track's steps and the swing row again after them, up to
-			// the last step.
+			// As Live's Duplicate Loop doubles a clip: every Track's steps, and the swing, Accent and Slide rows,
+			// again after them, up to the last step.
 			const int length = _pattern.length;
 			const int doubled = std::min(2 * length, MaxSteps);
 			if(doubled == length)
@@ -62,7 +64,11 @@ namespace mdseq
 			for(auto& track : _pattern.steps)
 				std::copy(track.begin(), track.begin() + (doubled - length), track.begin() + length);
 			for(int s = length; s < doubled; ++s)
+			{
 				setBit(_pattern.swingSteps, s, _pattern.inSwingRow(s - length));
+				setBit(_pattern.accentSteps, s, _pattern.inAccentRow(s - length));
+				setBit(_pattern.slideSteps, s, _pattern.inSlideRow(s - length));
+			}
 			_pattern.length = doubled;
 			return true;
 		}
@@ -74,6 +80,12 @@ namespace mdseq
 			return assign(_pattern.swing, static_cast<uint8_t>(std::clamp(_in.value, MinSwing, MaxSwing)));
 		case Kind::SetSwingStep:
 			return _in.step >= 0 && _in.step < MaxSteps && setBit(_pattern.swingSteps, _in.step, _in.value != 0);
+		case Kind::SetAccent:
+			return assign(_pattern.accent, static_cast<uint8_t>(std::clamp(_in.value, 0, MaxAccent)));
+		case Kind::SetAccentStep:
+			return _in.step >= 0 && _in.step < MaxSteps && setBit(_pattern.accentSteps, _in.step, _in.value != 0);
+		case Kind::SetSlideStep:
+			return _in.step >= 0 && _in.step < MaxSteps && setBit(_pattern.slideSteps, _in.step, _in.value != 0);
 		default:
 			break;
 		}

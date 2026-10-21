@@ -1,0 +1,80 @@
+/* MoDule Seq v7, look variant "module": the structure of the Overbridge variant (screens, rings, LED keys), in
+   MoDule's own colours and type, as its skin has them (MModule's mdDrums.rcss, v22's HANDOFF "Colour"): chrome
+   #1b1c1e, surface #26272a, display #151618, line #3a3c40, rule #55585e, ink #f2f2f2 / #a7aaaf / #8e9197, track
+   #6e7177, accent #6fd1c4 with #10201e on it, mute #ff7a5c; Inter. Its grammar: content is ink (the Hits are white,
+   brighter with velocity), whatever is on is the accent, a muted Track is the mute colour. Layered over v7-ui.css; the
+   containers carry .fam-md. */
+
+@font-face { font-family: Inter; src: url("fonts/Inter-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Inter; src: url("fonts/Inter-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: Inter; src: url("fonts/Inter-SemiBold.ttf"); font-weight: 600; }
+@font-face { font-family: Inter; src: url("fonts/Inter-Bold.ttf"); font-weight: 700; }
+
+.fam-md {
+	--chrome: #111214;
+	--bg: #1b1c1e;
+	--panel: #26272a;
+	--panel-beat: #2b2c30;
+	--line: #3a3c40;
+	--border: #3a3c40;
+	--text: #f2f2f2;
+	--text-dim: #a7aaaf;
+	--text-faint: #8e9197;
+	--hit: #f2f2f2;
+	--on: #6fd1c4;
+	--on-text: #10201e;
+	--accent: #6fd1c4;
+	--active: transparent;
+	--muted: #ff7a5c;
+	--cond: #a7aaaf;
+	--font: Inter, Arial, sans-serif;
+	--fs-s: 10px; --fs-m: 10px; --fs-l: 13px; --fs-xl: 13px;
+	--radius: 2px;
+	font-family: var(--font);
+}
+
+.fam-md .device { box-shadow: 0 0 0 1px #000; }
+.fam-md .device .titlebar { background: #151618; color: var(--text-faint); letter-spacing: 1px; font-size: 10px;
+	font-weight: 600; border-bottom: 1px solid #55585e; }
+
+/* Labels: MoDule's group titles, semibold, the line of the group after them where there is room */
+.fam-md .label { font-weight: 600; font-size: 10px; letter-spacing: 0.6px; color: var(--text-dim); }
+.fam-md .dialname, .fam-md .trackname { font-weight: 500; font-size: 10px; letter-spacing: 0.4px; color: var(--text-dim); }
+.fam-md .trackname { font-size: 11px; }
+.fam-md .trackname.shown, .fam-md .dialname.locked { color: var(--text); font-weight: 600; }
+.fam-md .title-l { font-weight: 600; font-size: 13px; letter-spacing: 1px; line-height: 18px; }
+.fam-md .hint { color: var(--text-faint); font-size: 10px; }
+
+/* Buttons: outlined as MoDule's toggles; on, filled with the accent */
+.fam-md .btn { background: transparent; border: 1px solid #6e7177; border-radius: 2px; color: var(--text-dim);
+	font-size: 10px; font-weight: 500; letter-spacing: 0.4px; }
+.fam-md .btn.on { background: var(--on); border-color: var(--on); color: var(--on-text); font-weight: 600; }
+.fam-md .btn.big { font-size: 13px; font-weight: 600; letter-spacing: 2px; color: var(--text); }
+.fam-md .btn.empty { color: #6e7177; border-color: #3a3c40; }
+.fam-md .btn.queued { box-shadow: inset 0 0 0 2px var(--accent); }
+.fam-md .btn.past { background: transparent; color: #4a4c50; border-color: #2e3034; }
+/* Modes: on as anything on, the accent */
+.fam-md .btn.mode.on, .fam-md .btn.setting.on { background: var(--on); border-color: var(--on); color: var(--on-text);
+	box-shadow: none; }
+.fam-md .btn.setting.on { background: transparent; border-color: #a7aaaf; color: var(--text); }
+/* Track activators: an outline while the Track plays, the mute colour once muted, as MoDule's Mute */
+.fam-md .mute { background: transparent; color: var(--text-dim); border-color: #6e7177; }
+.fam-md .mute.muted { background: var(--muted); color: #111111; border-color: var(--muted); }
+
+.fam-md .menu { background: #151618; border: 1px solid #3a3c40; border-radius: 2px; color: var(--text); font-size: 10px;
+	font-weight: 500; white-space: nowrap; }
+.fam-md .menu::after { color: var(--text-faint); }
+.fam-md .slider { background: #151618; border: 1px solid #3a3c40; border-radius: 2px; }
+.fam-md .slider .val { background: var(--accent); }
+.fam-md .rule { background: #55585e; }
+
+/* Screens: MoDule's display colour, framed by its line */
+.fam-md .screen { background: #151618; border: 1px solid #3a3c40; border-radius: 2px; color: var(--text-dim);
+	font-family: var(--font); font-size: 10px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.fam-md .screen.value { color: var(--text); }
+.fam-md .screen.value.kit { color: var(--text-faint); font-style: normal; }
+.fam-md .screen.value.locked { color: var(--accent); font-weight: 600; }
+.fam-md .screen.news { color: var(--accent); }
+
+/* Knobs: MoDule's vknob, a track in #6e7177 and the value's arc in the accent */
+.fam-md svg path[style*="stroke: var(--line)"] { stroke: #3a3c40 !important; }

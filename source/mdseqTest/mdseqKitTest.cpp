@@ -50,7 +50,7 @@ namespace
 		const std::optional<Kit> kit = parseKit(
 			"md-drums-kit 1\n"
 			"track 17 16 TRX-BD A B C D E F G H\n"
-			"track 2 192 TRX-BD A B C D E F G H\n"
+			"track 2 256 TRX-BD A B C D E F G H\n"
 			"track 3 16 TRX-BD A B C\n"
 			"values 2 1 2 3\n"
 			"values 3 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 128\n"
@@ -64,6 +64,15 @@ namespace
 		CHECK(kit->tracks[4].machineName == "TRX-SD" && kit->tracks[4].synNames[0] == "-" &&
 			kit->tracks[4].synNames[1] == "TUNE");
 		CHECK(kit->name.empty());
+
+		// A User Machine of MoDule, from id 194, and a ROM Machine named after a user's Sample, as MoDule writes them.
+		const std::optional<Kit> user = parseKit(
+			"md-drums-kit 1\n"
+			"track 1 176 gretsch_tom_06 PTCH DEC HOLD BRR STRT END RTRG RTIM\n"
+			"track 2 194 NFX-D2 DRV TONE LVL OUT BRR MIX - -\n");
+		CHECK(user && user->tracks[0].machine == 176 && user->tracks[0].machineName == "gretsch_tom_06");
+		CHECK(user && user->tracks[1].machine == 194 && user->tracks[1].machineName == "NFX-D2" &&
+			user->tracks[1].synNames[0] == "DRV" && user->tracks[1].synNames[7] == "-");
 	}
 
 	void helloBytes()
@@ -86,21 +95,30 @@ namespace
 		CHECK(KitLink(0).id() <= 0xFFFFFF && KitLink(0x5000000).id() <= 0xFFFFFF);
 	}
 
-	// A hello at the first tick, then every second (two ticks) while there is no file, every five seconds (ten ticks)
-	// while there is one, busy or read, and every second again once it has gone.
+	// A hello at the first tick; while there is no file, 1, 2, 4 and 8 seconds later (2, 4, 8 and 16 ticks), then every
+	// ten seconds (20 ticks); every ten seconds while there is one, busy or read, from the last hello; and from a
+	// second again once it has gone.
 	void helloCadence()
 	{
 		HelloPace pace;
 		std::vector<int> hellos;
-		for(int tick = 1; tick <= 30; ++tick)
+		for(int tick = 1; tick <= 100; ++tick)
 		{
 			KitFile::State file = KitFile::State::Absent;
-			if(tick >= 4 && tick <= 23)
+			if(tick >= 41 && tick <= 80)
 				file = tick % 3 == 0 ? KitFile::State::Busy : KitFile::State::Read;
 			if(pace.tick(file))
 				hellos.push_back(tick);
 		}
-		CHECK((hellos == std::vector<int>{1, 3, 13, 23, 25, 27, 29}));
+		CHECK((hellos == std::vector<int>{1, 3, 7, 15, 31, 51, 71, 81, 83, 87, 95}));
+
+		// Never answered: from 8 seconds, every ten.
+		HelloPace alone;
+		hellos.clear();
+		for(int tick = 1; tick <= 100; ++tick)
+			if(alone.tick(KitFile::State::Absent))
+				hellos.push_back(tick);
+		CHECK((hellos == std::vector<int>{1, 3, 7, 15, 31, 51, 71, 91}));
 	}
 
 	void kitChanges()

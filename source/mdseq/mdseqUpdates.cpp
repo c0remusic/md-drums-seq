@@ -65,7 +65,7 @@ namespace mdseq
 		const std::optional<Version> current = parseVersion(_current);
 		if(!_release || !current || !(*current < *_release))
 			return {};
-		return "md-drums-seq " + versionText(*_release) + " is available: " + ReleasesPage;
+		return "MoDule Seq " + versionText(*_release) + " is available: " + ReleasesPage;
 	}
 
 	bool checkDue(const std::string_view _lastDay, const std::string_view _today)

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoDule Seq v11</title>
+<link rel="stylesheet" href="v11-ui.css">
+</head>
+<body>
+<div class="page">
+	<h1>MoDule Seq v11</h1>
+	<p class="note">La v10, avec trois retouches demandées : <b>des touches pleines, sans barre</b> (un mode allumé se
+		remplit de turquoise comme ce qui est choisi, plus de LED en haut de la touche) ; <b>des cases sans barre</b> (un pas
+		accentué prend tout entier la couleur de l'Accent, une Condition n'est plus que son texte) ; <b>des cases du
+		séquenceur visibles</b> (chaque pas vide est une touche #3d3f44, les temps #4a4c52, sur la face #2a2b2f ; hors
+		longueur, #202125, éteint ; un Hit jamais plus sombre qu'à mi-chemin du blanc). La v10 : ce qui est choisi en
+		turquoise plein, les écrans colorés, les Hits à l'encre. Le reste est celui de la v9, rappelé ci-dessous.</p>
+
+	<h2>Ce que la v9 a changé depuis la v8, gardé</h2>
+	<ul class="changes">
+		<li><b>Les couleurs (v10).</b> L'encre (#f2f2f2) pour le contenu, les Hits et les valeurs. Le turquoise de MoDule
+			(#6fd1c4) pour ce qui est choisi (Pattern, Track, page, Hit, en touche pleine), pour ce qui vit (pas joué,
+			sélection, Locks, LED d'un mode, Pattern en file) et pour les écrans. Le corail (#ff7a5c) pour une Track coupée.
+			Les rangées ont leurs marques : Accent ambre (#e8b35a), Slide pervenche (#9fb7ff).</li>
+		<li><b>Capitales mesurées.</b> Titres de groupe, touches, menus et noms courts des paramètres en capitales ; les
+			écrans en casse normale ; la marque écrite « MoDule Seq ».</li>
+		<li><b>Moins de boîtes.</b> Les écrans ne gardent que les états (Pattern, chaîne, prise, nouvelle version, pas
+			montré, micro-timing, courbe des ratchets, Print) ; les valeurs des Locks et la vélocité redeviennent du texte, un
+			Lock en turquoise, la valeur du Kit dans l'encre pâle.</li>
+		<li><b>Hiérarchie.</b> Titres de groupe en 10 px gras, pâles ; touches, menus et écrans en 10 px ; noms et valeurs
+			en 12 px ; titre du panneau et FILL en 14 px gras.</li>
+		<li><b>Contrastes.</b> Encre pâle #9a9da3 (4,5:1 sur la face, le seuil AA) ; touches #3d3e43 sur une face #2a2b2f,
+			qui s'en détachent.</li>
+		<li><b>Multiples de 2</b>, à la demande de l'utilisateur : tailles de texte 10, 12 et 14 px ; dans les cases, des
+			marges de 2 px, des bandes de 2 px, la marque d'un Lock en carré de 4 px dans un cadre de 8 ; la LED d'un mode de
+			4 px.</li>
+	</ul>
+
+	<h2>Bande</h2>
+	<div class="fam-v9 fam-v10 fam-v11" id="strip"></div>
+	<h2>Fenêtre d'édition</h2>
+	<div class="fam-v9 fam-v10 fam-v11" id="window"></div>
+</div>
+<script src="v11-ui.js"></script>
+<script>
+	// Canvases take a font once it has loaded
+	Promise.all([document.fonts.load("bold 10px 'Ableton Sans'"), document.fonts.load("500 10px 'Ableton Sans'")])
+		.then(() => {
+			mdSeqMock11.strip(document.getElementById("strip"));
+			mdSeqMock11.editWindow(document.getElementById("window"));
+		});
+</script>
+</body>
+</html>

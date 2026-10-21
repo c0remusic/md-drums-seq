@@ -50,6 +50,11 @@ def check(patcher, where, width, height, edits, problems, sends, receives, names
 			sends.add(text[2:])
 		if b["maxclass"] == "newobj" and text.startswith("r "):
 			receives.add(text[2:])
+		# live.path, live.object and live.observer have no attributes (their refpages' empty attributelist): an
+		# "@property value" set nothing, and the observers of issue 33 stayed silent in Live on 2026-10-19.
+		if b["maxclass"] == "newobj" and text.split()[:1] in (["live.path"], ["live.object"], ["live.observer"]) \
+				and "@" in text:
+			problems.append("%s: %r takes no attribute: give the property as its argument" % (where, text))
 		attrs = b.get("saved_attribute_attributes", {}).get("valueof", {})
 		if "parameter_longname" in attrs:
 			name = attrs["parameter_longname"]
@@ -207,6 +212,14 @@ def main():
 		problems.append("send %s has no receive" % name)
 	check_messages(patchers, vocabulary, problems)
 	check_panel(patchers, vocabulary, receives, problems)
+	# Each lcd as large as the core draws it (mdseqView.h), so that its cells and its clicks are where the boxes
+	# beside them stand
+	sizes = {(g["width"], g["height"]) for g in vocabulary["lcd"].values()}
+	for where, boxes, _ in patchers:
+		for b in boxes.values():
+			if b["maxclass"] == "lcd" and tuple(b["presentation_rect"][2:]) not in sizes:
+				problems.append("%s: lcd %s is not one the core draws %s" % (where, b["presentation_rect"],
+					sorted(sizes)))
 	if problems:
 		print("\n".join(problems))
 		sys.exit(1)

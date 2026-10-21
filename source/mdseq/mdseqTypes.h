@@ -11,6 +11,7 @@ namespace mdseq
 	constexpr int MaxSteps = 64;
 	constexpr int DefaultLength = 16;
 	constexpr int PatternCount = 16;	// the device's bank
+	constexpr int ChainLength = 16;		// the Patterns of a chain, at most
 
 	// The Pattern's scale, the Machinedrum MKII's: 1/8x, 1/4x, 1/2x, 3/4x, 1x, 3/2x, 2x, by index.
 	constexpr int ScaleCount = 7;
@@ -49,6 +50,23 @@ namespace mdseq
 
 	// The velocity that carries a Lock's value.
 	constexpr uint8_t lockVelocity(const uint8_t _value) { return _value < NoLock ? _value + 1 : _value; }
+
+	// Accent, the Machinedrum's: every Hit of a step in the Pattern's Accent row plays at 128 + 2 x the Pattern's amount
+	// (0-127). Note 88, after the Locks, tells MD Drums, its velocity the amount on the Locks' scale (MD Drums' ADR
+	// 0003 as amended on 2026-10-17); it goes with its Hit as a Lock does.
+	constexpr uint8_t AccentNote = FirstLockNote + LockCount;
+	constexpr int MaxAccent = 127;
+
+	// Slide, the Machinedrum's: on a step of the Pattern's Slide row, each Track's Hit has its Locks glide to those of
+	// the Track's next Hit in the Pattern, whatever that Hit's Condition (a Lock that Hit lacks glides to the Kit's
+	// value), over the clocks between the two Hits as they play, swing and micro-timing included. With the Hit's last
+	// ratchet, after the Accent, as Locks go: note 89, its velocity the clocks (24 to a quarter note); notes 90-113, the
+	// next Hit's Locks in the Locks' order and scale, for the Locks the step has; note 114 when the clocks pass 127, each
+	// of its velocity's units 127 clocks more (issue 26, decided on 2026-10-19 on MD Drums' proposal).
+	constexpr uint8_t SlideNote = AccentNote + 1;
+	constexpr uint8_t FirstSlideTargetNote = SlideNote + 1;
+	constexpr uint8_t LongSlideNote = FirstSlideTargetNote + LockCount;
+	constexpr double TicksPerClock = TicksPerQuarter / 24.0;
 
 	// Ratchets: 1 to 8 Hits shared out evenly over the step, their velocities along a curve from -100 % (falling from
 	// the step's velocity) to +100 % (rising to it).
@@ -119,15 +137,21 @@ namespace mdseq
 		uint8_t scale = DefaultScale;
 		uint8_t swing = MinSwing;
 		uint64_t swingSteps = DefaultSwingSteps;	// bit s: step s swings
+		uint8_t accent = 0;							// 0-127, the Accent's amount
+		uint64_t accentSteps = 0;					// bit s: step s is accented, every Track's Hit there
+		uint64_t slideSteps = 0;					// bit s: every Track's Locks glide from step s to its next Hit
 
 		// Whether the step is in the swing row, and whether it plays late: in the row, at more than 50 %.
 		bool inSwingRow(const int _step) const { return (swingSteps >> _step & 1u) != 0; }
 		bool swings(const int _step) const { return swing > MinSwing && inSwingRow(_step); }
+		bool inAccentRow(const int _step) const { return (accentSteps >> _step & 1u) != 0; }
+		bool inSlideRow(const int _step) const { return (slideSteps >> _step & 1u) != 0; }
 
 		bool operator==(const Pattern& _other) const
 		{
 			return length == _other.length && scale == _other.scale && swing == _other.swing &&
-				swingSteps == _other.swingSteps && steps == _other.steps;
+				swingSteps == _other.swingSteps && accent == _other.accent && accentSteps == _other.accentSteps &&
+				slideSteps == _other.slideSteps && steps == _other.steps;
 		}
 	};
 
@@ -170,9 +194,15 @@ namespace mdseq
 			SetSwingStep,	// value 0 or 1: whether the step swings, for every Track; track unused
 			CopyPattern,	// value 0-15: the Pattern copied over the Pattern the edit names; track and step unused
 			DoubleLength,	// the length doubled, up to 64, and steps 1-L again after them; track, step, value unused
-			ClearPattern	// the Pattern back to an empty one, length, scale and swing too; track, step, value unused
+			ClearPattern,	// the Pattern back to an empty one, length, scale, swing and accent too; track, step, value unused
+			SetAccent,		// value 0-127, the Accent's amount; track and step unused
+			SetAccentStep,	// value 0 or 1: whether the step is accented, for every Track; track unused
+			SetSlideStep,	// value 0 or 1: whether the step slides, for every Track; track unused
+			ChainEntry,		// step 0-15, value 0-15: the chain's Pattern at that place; not an edit
+			SetChain		// value: how many of the chain's Patterns play, round and round, from 2; 0 for no chain. A
+							// Pattern chosen (SetPattern) ends it. Not an edit
 		};
-		static constexpr int KindCount = static_cast<int>(Kind::ClearPattern) + 1;
+		static constexpr int KindCount = static_cast<int>(Kind::SetChain) + 1;
 
 		Kind kind;
 		int track;

@@ -1,0 +1,10 @@
+/* MoDule Seq v7, look variant "live-module": v7 as it is, Live's own greys, contrast and type (Ableton Sans), with
+   MoDule's accent, #6fd1c4, where v7 had Live's blue: the selection, the step playing, the Locks, the modes and the
+   screens' text. The user, on the darker MoDule variant: "very dark, not very readable, can we do it native to Live?"
+   Layered over v7-ui.css; the containers carry .fam-live and .md-accent. */
+
+.md-accent { --accent: #6fd1c4; }
+.md-accent .screen { color: #9fe0d6; }
+.md-accent .screen.value.locked { color: #6fd1c4; }
+.md-accent .roles .btn.mode.on, .roles .md-accent .btn.mode.on, .md-accent .btn.mode.on { background: #6fd1c4;
+	border-color: #6fd1c4; color: #10201e; }

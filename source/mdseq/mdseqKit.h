@@ -16,7 +16,7 @@ namespace mdseq
 {
 	struct KitTrack
 	{
-		int machine = -1;			// MD Drums' Machine id, 0-191; -1 while MD Drums does not say
+		int machine = -1;			// MD Drums' Machine id, 0-255; -1 while MD Drums does not say
 		std::string machineName;	// as the Machinedrum shows it, "TRX-BD"
 		std::array<std::string, SynCount> synNames;	// "PTCH", "DEC"... "-" for one the Machine does not use
 		std::array<int, LockCount> values;			// the Kit's, in the Locks' order; -1 while MD Drums does not say
@@ -94,11 +94,13 @@ namespace mdseq
 		std::optional<Kit> m_kit;
 	};
 
-	// When to say hello: at the first tick, then every second (two ticks of KitLink::PollMs) while MD Drums' file is
-	// absent, every five seconds while it is there, read or busy. It ticks on Max's scheduler thread, apart from the
-	// file's reading on the main thread: in Live, Max's main thread stops for seconds at a time (measured on 2026-10-17:
-	// 3.7 s and 6.4 s, and 13 s between two hellos), and MD Drums forgets a device it has not heard for 15 s, deleting
-	// its file. Allocates nothing.
+	// When to say hello: at the first tick; while MD Drums' file is absent, 1, 2, 4 and 8 seconds later, then every ten
+	// seconds (KitLink::PollMs ticks); every ten seconds while it is there, read or busy; and from a second again once
+	// it has gone. Ten seconds keeps the hellos rare in the MIDI the device sends while stopped, under the 15 s after
+	// which MD Drums forgets a device, deleting its file: MD Drums takes the hellos it has heard before it forgets
+	// (Controller::followKitFiles), so a stop of its own message thread loses none. It ticks on Max's scheduler thread,
+	// apart from the file's reading on the main thread: in Live, Max's main thread stops for seconds at a time
+	// (measured on 2026-10-17: 3.7 s and 6.4 s, and 13 s between two hellos). Allocates nothing.
 	class HelloPace
 	{
 	public:
@@ -107,5 +109,6 @@ namespace mdseq
 
 	private:
 		int m_sinceHello = -1;	// ticks since the last hello, -1 before the first
+		int m_wait = 1;			// ticks between two unanswered hellos, doubled after each up to ten seconds
 	};
 }

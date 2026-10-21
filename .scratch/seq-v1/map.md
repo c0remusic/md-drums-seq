@@ -70,6 +70,8 @@ tag.
   en objets `live.*`, pas et grille en `lcd` (vélocité en teinte, crans de ratchets, bande et texte de Condition, point
   de Lock, flèche de micro-timing). v5 approuvée le 2026-10-16 (la v4 telle que Max la construit, avec les valeurs du
   Kit, sans textes d'aide) et construite au [ticket 28](issues/28-ui-v5.md), vue dans Live le 2026-10-17 et approuvée par l'utilisateur.
+  v12 approuvée le 2026-10-20 (couleurs et police de MoDule, écrans, touches pleines, un seul Print), construite
+  le même jour (`Design/HANDOFF.md`), mesurée dans Live et essayée par l'utilisateur le 2026-10-21.
 - [Structure du moteur en Max natif](issues/08-structure-du-moteur-natif.md) : la logique vit dans un external C++
   (`mdseq.mxe64`, ADR 0002) dont le noyau sans Max est testé sous ctest ; pas n planifié à la frontière de n−1, horloge
   ITM en ticks dans l'adaptateur, noyau confiné au fil du scheduler ; flux joué = flux imprimé ; 16 `pattr` Blob, un
@@ -95,12 +97,12 @@ tag.
 
 - La construction après la tranche verticale (ticket 13) : un ticket `task` par ajout (voir Notes), créé quand on y
   arrive ; la banque de Patterns attend « Persistance des Patterns par Blob » (ticket 14).
-- Accent, Swing et Slide façon MD (ticket 26) : Swing construit le 2026-10-15 ; Accent et Slide attendent une entrée dans
-  MD Drums (un accent au-delà de la vélocité 127, des Locks sans Hit ou un glissement).
-- Push 2 : grille de pas, Track choisie, encodeurs pour les Locks pendant qu'un pas est tenu, et la bascule avec le mode
-  contrôleur de MD Drums (sa carte éditeur le prévoit). Les banques de paramètres de MD Drums : ticket 25. Mode
-  « à la Tuple » par `grab_control` : [ticket 33](issues/33-mode-push.md), recherche faite le 2026-10-17, six
-  questions pour la séance.
+- Accent, Swing et Slide façon MD ([ticket 26](issues/26-swing-accent-slide.md)) : Swing construit le 2026-10-15 ;
+  Accent (note 88) le 2026-10-17, vérifié dans Live ; Slide (notes 89-114) décidé et construit le 2026-10-19, des deux
+  côtés (MoDule 4ab931b), essayé dans Live le 2026-10-21 : résolu. L'Accent et le Slide partent dans MoDule 0.1.2.
+- Push 2 : mode « à la Tuple » par `grab_control`, [ticket 33](issues/33-mode-push.md), construit et essayé dans Live
+  le 2026-10-19 (Mute verrouillé ajouté), le reste des boutons essayé le 2026-10-21 : résolu. Les banques de paramètres de MD Drums
+  ([ticket 25](issues/25-banques-push-pour-md-drums.md)) : fermé le 2026-10-19, MoDule s'en charge lui-même.
 - Enregistrement live : Hits joués en temps réel, quantisés, Locks pris des mouvements d'encodeurs.
 - Format de stockage des Patterns dans le set (taille, versions du format).
 - ~~Mise en place dans Live : set modèle ou réglage à la main des External Instruments~~ : plus de question depuis
