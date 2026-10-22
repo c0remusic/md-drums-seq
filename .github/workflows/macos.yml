@@ -1,0 +1,37 @@
+name: macOS
+
+# The external for macOS, universal (arm64 and x86_64): built, tested with the same ctest as on Windows, signed ad hoc
+# (Apple Silicon loads no unsigned code), and kept as an artifact that a release copies into its device folder before
+# packaging (tools/package.py). A tar keeps the bundle's permissions, which an artifact's zip drops.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "source/**"
+      - "tools/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/macos.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j 4
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Sign and pack
+        run: |
+          codesign --force --deep --sign - build/device/mdseq.mxo
+          codesign --verify --verbose build/device/mdseq.mxo
+          lipo -info build/device/mdseq.mxo/Contents/MacOS/mdseq
+          tar -C build/device -czf mdseq-mxo.tar.gz mdseq.mxo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mdseq-mxo
+          path: mdseq-mxo.tar.gz

@@ -30,7 +30,7 @@ add_custom_command(
 )
 add_custom_target(mdseqDevice ALL DEPENDS "${_device}")
 
-# A release's zip, MModuleSeq-<version>-win64.zip in the build folder, on request: cmake --build build --config
+# A release's zip, MModuleSeq-<version>.zip in the build folder, on request: cmake --build build --config
 # Release --target zip_release. package.py refuses a development build.
 add_custom_target(zip_release
 	COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/package.py" "${C74_LIBRARY_OUTPUT_DIRECTORY}"

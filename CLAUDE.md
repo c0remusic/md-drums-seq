@@ -166,7 +166,7 @@ included): `origin`, c0remusic/MModuleSeq-dev (private, md-drums-seq-dev before)
 looks. The public one never gets the private history: a release is one commit on `public/main` with the tree of the release's commit here and the
 previous release as its parent (`git commit-tree <commit>^{tree} -p public/main -F <message>`, pushed to `public` as
 `main`), then a tag and a GitHub release there with the zip, a prerelease while the version is below 1.0. 0.1.0 is
-public 4e23a2d, the tree of f9f0d6a here; 0.1.1 is public d14b827, the tree of b5974fa. The release's notes are kept
+public 4e23a2d, the tree of f9f0d6a here; 0.1.1 is public d14b827, the tree of b5974fa; 0.2.0 is public 48f22fa, the tree of d3855c1. The release's notes are kept
 in `.scratch/release/<version>-notes.md`.
 
 Code conventions are gearmulator-md-drums': tabs (size 4), 120 columns, braces on their own line, namespace content

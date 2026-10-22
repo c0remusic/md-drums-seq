@@ -7,11 +7,12 @@ or capture what it played, into Live clips that play MoDule without it.
 
 Up to 0.1.1 the device was called MD Drums Seq, and the plug-in MD Drums.
 
-Version 0.2.0, a preview: Windows only.
+Version 0.2.1, a preview, for Windows and macOS. The macOS engine is built by GitHub's runners and has not been
+tried on a Mac yet: reports are welcome.
 
 ## Requirements
 
-- Windows 10 or 11, 64-bit.
+- Windows 10 or 11, 64-bit, or macOS 11 or later (Intel or Apple Silicon).
 - Ableton Live 12 with Max for Live (developed and measured on Live 12.2.1).
 - MoDule ([releases](https://github.com/c0remusic/MModule/releases)), or MD Drums, its name up to 0.1.1: 0.1.0 or
   later plays the Hits and the Locks; 0.1.1 or later also names the Tracks after their Machines and shows the Kit's
@@ -20,12 +21,20 @@ Version 0.2.0, a preview: Windows only.
 
 ## Install
 
-1. Unzip `MModuleSeq-<version>-win64.zip`.
+1. Unzip `MModuleSeq-<version>.zip`.
 2. Put the `MoDule Seq` folder into Live's User Library, under `Presets/MIDI Effects/Max MIDI Effect/`. Keep its
-   two files together: the device loads its engine, `mdseq.mxe64`, from its own folder. Remove an older
+   files together: the device loads its engine from its own folder, `mdseq.mxe64` on Windows and `mdseq.mxo` on
+   macOS. Remove an older
    `md-drums-seq` folder, from 0.1.1 or before: its engine has the same name, and Max loads only one. In a set made
    with MD Drums Seq, put MoDule Seq in its place.
-3. Start Live (or restart it: Max never loads a new version of an engine it has already loaded).
+3. On macOS, the engine is not notarized by Apple, and macOS refuses a file downloaded from the internet that is
+   not: the device's window then stays empty, and Max's console says "mdseq: No such object". Once, in Terminal,
+   take the download's mark off the folder (the path is the User Library's default):
+
+   ```
+   xattr -dr com.apple.quarantine ~/Music/Ableton/User\ Library/Presets/MIDI\ Effects/Max\ MIDI\ Effect/MoDule\ Seq
+   ```
+4. Start Live (or restart it: Max never loads a new version of an engine it has already loaded).
 
 ## Set up
 

@@ -7,6 +7,9 @@ target_link_libraries(mdseq PRIVATE mdseqCore)
 # A newer release, asked of GitHub over HTTPS (updates.cpp)
 if(WIN32)
 	target_link_libraries(mdseq PRIVATE winhttp)
+elseif(APPLE)
+	find_package(CURL REQUIRED)
+	target_link_libraries(mdseq PRIVATE CURL::libcurl)
 endif()
 
 # The Max class, and the file's name with it. Max never reloads a class it has loaded, so a development build takes a

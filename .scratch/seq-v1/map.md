@@ -103,6 +103,10 @@ tag.
 - Push 2 : mode « à la Tuple » par `grab_control`, [ticket 33](issues/33-mode-push.md), construit et essayé dans Live
   le 2026-10-19 (Mute verrouillé ajouté), le reste des boutons essayé le 2026-10-21 : résolu. Les banques de paramètres de MD Drums
   ([ticket 25](issues/25-banques-push-pour-md-drums.md)) : fermé le 2026-10-19, MoDule s'en charge lui-même.
+- Locks réglables depuis n'importe quel contrôleur, sans mapping : réglages qui suivent le pas sélectionné, en
+  banques `live.banks` pour la main bleue de Live, [ticket 34](issues/34-locks-mappables.md), ouvert le 2026-10-21.
+- Une commande mappable par Pattern (16 paramètres, comme Stepic for Live), [ticket 35](issues/35-patterns-mappables.md),
+  ouvert le 2026-10-22.
 - Enregistrement live : Hits joués en temps réel, quantisés, Locks pris des mouvements d'encodeurs.
 - Format de stockage des Patterns dans le set (taille, versions du format).
 - ~~Mise en place dans Live : set modèle ou réglage à la main des External Instruments~~ : plus de question depuis

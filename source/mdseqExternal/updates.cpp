@@ -12,6 +12,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <winhttp.h>
+#elif defined(__APPLE__)
+#include <curl/curl.h>
 #endif
 
 namespace mdseqUpdates
@@ -140,6 +142,38 @@ namespace mdseqUpdates
 				WinHttpCloseHandle(connection);
 			WinHttpCloseHandle(session);
 			return body;
+#elif defined(__APPLE__)
+			// macOS ships libcurl: the same request, the same limits.
+			CURL* curl = curl_easy_init();
+			if(!curl)
+				return std::nullopt;
+			std::string text;
+			const auto append = +[](char* _data, size_t _size, size_t _count, void* _text) -> size_t
+			{
+				auto& t = *static_cast<std::string*>(_text);
+				if(t.size() + _size * _count > (1u << 20))
+					return 0;	// stops the transfer: more than 1 MB
+				t.append(_data, _size * _count);
+				return _size * _count;
+			};
+			const std::string url = std::string("https://api.github.com") + mdseq::ReleasesApiPath;
+			curl_slist* headers = curl_slist_append(nullptr, "Accept: application/vnd.github+json");
+			curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+			curl_easy_setopt(curl, CURLOPT_USERAGENT, "MModuleSeq");
+			curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &text);
+			long status = 0;
+			const CURLcode result = curl_easy_perform(curl);
+			curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+			curl_slist_free_all(headers);
+			curl_easy_cleanup(curl);
+			if(result != CURLE_OK || status != 200)
+				return std::nullopt;
+			return text;
 #else
 			return std::nullopt;
 #endif

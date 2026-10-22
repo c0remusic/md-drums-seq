@@ -11,10 +11,13 @@ FetchContent_Declare(
 # The external lands next to the device that loads it.
 set(C74_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/device")
 set(MDSEQ_CLASS "mdseq" CACHE STRING "The external's Max class and file name (a new one per development build)")
+# macOS: one external for Intel and Apple Silicon, from Live 12's oldest macOS (std::filesystem needs 10.15 at least).
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
 FetchContent_MakeAvailable(max-sdk-base)
 
 # The version a release carries (tools/package.py names its zip after it), shown in the Max console as the device loads.
-project(MModuleSeq VERSION 0.2.0 LANGUAGES C CXX)
+project(MModuleSeq VERSION 0.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
